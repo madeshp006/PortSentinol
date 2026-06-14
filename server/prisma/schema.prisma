@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+model User {
+  id                     String    @id @default(cuid())
+  name                   String
+  email                  String    @unique
+  passwordHash           String
+  role                   String    @default("Security Analyst")
+  company                String    @default("PortSentinel Lab")
+  otpCode                String?
+  otpExpiresAt           DateTime?
+  passwordResetToken     String?
+  passwordResetExpiresAt DateTime?
+  refreshToken           String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  scans         ScanResult[]
+  scanJobs      ScanJob[]
+  agents        Agent[]
+  alerts        Alert[]
+  auditLogs     AuditLog[]
+  schedules     Schedule[]
+  notifications Notification[]
+}
+
+// ─── Agents ──────────────────────────────────────────────────────────────────
+model Agent {
+  id              String   @id @default(cuid())
+  agentId         String   @unique @default(cuid())
+  name            String
+  deviceName      String
+  operatingSystem String
+  version         String   @default("1.0.0")
+  status          String   @default("offline")
+  lastSeen        DateTime @default(now())
+  apiKey          String   @unique
+  userId          String
+  createdAt       DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanJobs ScanJob[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─── Scans ───────────────────────────────────────────────────────────────────
+model ScanResult {
+  id                String    @id @default(cuid())
+  userId            String
+  target            String
+  scanType          String
+  portRange         String    @default("")
+  duration          String    @default("0m 00s")
+  riskScore         Int       @default(100)
+  openPorts         Int       @default(0)
+  servicesDetected  Int       @default(0)
+  misconfigurations Int       @default(0)
+  totalPorts        Int       @default(0)
+  ports             Json      @default("[]")
+  misconfigs        Json      @default("[]")
+  findings          Json      @default("[]")
+  status            String    @default("queued")
+  progress          Int       @default(0)
+  currentStage      String    @default("queued")
+  scopeStatus       String    @default("allowed")
+  workerMode        String    @default("local")
+  errorMessage      String    @default("")
+  cancelRequested   Boolean   @default(false)
+  timeline          Json      @default("[]")
+  requestedAt       DateTime  @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  savedAt           DateTime  @default(now())
+  timestamp         DateTime  @default(now())
+  agentId           String?
+  scanJobId         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanJob ScanJob? @relation(fields: [scanJobId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─── Scan Jobs (Agent-routed scans) ──────────────────────────────────────────
+model ScanJob {
+  id        String   @id @default(cuid())
+  target    String
+  scanType  String
+  portRange String   @default("")
+  status    String   @default("pending")
+  progress  Int      @default(0)
+  agentId   String?
+  userId    String
+  result    Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id])
+  scans ScanResult[]
+
+  @@index([userId])
+  @@index([agentId])
+  @@index([status])
+}
+
+// ─── Alerts ──────────────────────────────────────────────────────────────────
+model Alert {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  risk      String   @default("info")
+  read      Boolean  @default(false)
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Audit Logs ──────────────────────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String   @default("")
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+// ─── Schedules ───────────────────────────────────────────────────────────────
+model Schedule {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  target    String
+  frequency String
+  scanType  String
+  active    Boolean  @default(true)
+  nextRun   String   @default("Calculating…")
+  lastRun   String   @default("Never")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
