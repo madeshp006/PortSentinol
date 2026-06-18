@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit";
 
 export function generatePdfReport(scan, res) {
-  const doc = new PDFDocument({ margin: 50, size: "A4" });
+  const doc = new PDFDocument({ margin: 50, size: "A4", bufferPages: true });
 
   // Pipe the PDF directly to the Express response stream
   doc.pipe(res);
@@ -32,9 +32,12 @@ export function generatePdfReport(scan, res) {
      .lineWidth(1)
      .stroke();
 
-  // Cyber header glow effect (subtle top line)
+  // Cyber header glow effect (subtle top line using native PDFKit linear gradient)
+  const grad = doc.linearGradient(25, 25, doc.page.width - 25, 25);
+  grad.stop(0, "#38bdf8")
+      .stop(1, "#a78bfa");
   doc.rect(25, 25, doc.page.width - 50, 4)
-     .fill("linear-gradient(90deg, #38bdf8, #a78bfa)");
+     .fill(grad);
 
   // Brand Name
   doc.fillColor(colors.primary)

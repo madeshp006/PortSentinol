@@ -405,6 +405,68 @@ export function AuthScreen() {
   const [shake, setShake] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
 
+  const [showVerifySignup, setShowVerifySignup] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [verifyOtp, setVerifyOtp] = useState("");
+  const [verifyOtpError, setVerifyOtpError] = useState("");
+  const [signupResendCooldown, setSignupResendCooldown] = useState(0);
+
+  // Countdown timer for signup OTP resend
+  React.useEffect(() => {
+    if (signupResendCooldown <= 0) return;
+    const t = setTimeout(() => setSignupResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [signupResendCooldown]);
+
+  const redirectBasedOnRole = (role: string) => {
+    if (role === "SUPER_ADMIN") {
+      navigate("/app/admin");
+    } else if (role === "SECURITY_ANALYST") {
+      navigate("/app/analyst");
+    } else {
+      navigate("/app");
+    }
+  };
+
+  const handleVerifySignup = async () => {
+    setVerifyOtpError("");
+    if (!verifyOtp.trim()) {
+      setVerifyOtpError("Verification code is required.");
+      return;
+    }
+    if (verifyOtp.trim().length !== 6 || !/^\d+$/.test(verifyOtp.trim())) {
+      setVerifyOtpError("Enter a valid 6-digit numeric verification code.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await api.verifySignup(verificationEmail, verifyOtp.trim());
+      setSession(
+        data.session,
+        { id: data.user.id, email: data.user.email },
+        data.profile
+      );
+      redirectBasedOnRole(data.profile.role);
+    } catch (err: any) {
+      setVerifyOtpError(err.message || "Failed to verify. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendSignupOtp = async () => {
+    setSignupResendCooldown(60);
+    try {
+      await api.resendSignupOtp(verificationEmail);
+      setGlobalMsg("A new verification code has been sent to your email!");
+      setGlobalType("success");
+    } catch (err: any) {
+      setGlobalMsg(err.message || "Failed to resend code.");
+      setGlobalType("error");
+    }
+  };
+
   const switchTab = (t: "login" | "signup") => {
     setTab(t);
     setErrors({});
@@ -464,25 +526,40 @@ export function AuthScreen() {
           { id: data.user.id, email: data.user.email },
           data.profile
         );
-        navigate("/app");
+        redirectBasedOnRole(data.profile.role);
       } else {
         const data = await api.signUp(name, email, password);
-        setSession(
-          data.session,
-          { id: data.user.id, email: data.user.email },
-          data.profile
-        );
-        navigate("/app");
+        if (data && (data as any).requireVerification) {
+          setVerificationEmail(email);
+          setShowVerifySignup(true);
+          setGlobalMsg("Verification code sent! Please check your email.");
+          setGlobalType("success");
+          setSignupResendCooldown(60);
+        } else {
+          setSession(
+            data.session,
+            { id: data.user.id, email: data.user.email },
+            data.profile
+          );
+          redirectBasedOnRole(data.profile.role);
+        }
       }
     } catch (err: any) {
-      setGlobalMsg(err.message || "Something went wrong. Please try again.");
-      setGlobalType("error");
-      triggerShake();
+      if (err.message && (err.message.includes("verify your email") || err.message.includes("verification"))) {
+        setVerificationEmail(email);
+        setShowVerifySignup(true);
+        setGlobalMsg("Please verify your email to log in. Verification code sent!");
+        setGlobalType("info");
+        setSignupResendCooldown(60);
+      } else {
+        setGlobalMsg(err.message || "Something went wrong. Please try again.");
+        setGlobalType("error");
+        triggerShake();
+      }
     } finally {
       setLoading(false);
     }
   };
-
   // Password strength meter (signup)
   const pwScore = (() => {
     let s = 0;
@@ -502,6 +579,150 @@ export function AuthScreen() {
       <AnimatePresence>
         {showForgot && (
           <ForgotPasswordOverlay onClose={() => setShowForgot(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* OTP verification slide-in overlay */}
+      <AnimatePresence>
+        {showVerifySignup && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            className="absolute inset-0 z-20 flex flex-col px-5 pt-6 pb-8"
+            style={{ background: "#060e1e" }}
+          >
+            {/* Header */}
+            <button
+              onClick={() => {
+                setShowVerifySignup(false);
+                setVerifyOtp("");
+                setVerifyOtpError("");
+              }}
+              className="flex items-center gap-1 mb-6"
+              style={{ color: "#4a6080", fontSize: "13px", fontFamily: "Inter" }}
+            >
+              <ChevronLeft size={16} /> Back to sign in
+            </button>
+
+            <div className="mb-8">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+                style={{
+                  background: "linear-gradient(135deg, #0a1e38, #071526)",
+                  border: "1.5px solid rgba(56,189,248,0.2)",
+                  boxShadow: "0 0 18px rgba(56,189,248,0.12)",
+                }}
+              >
+                <KeyRound size={20} color="#38bdf8" strokeWidth={1.5} />
+              </div>
+              <h2 style={{ fontSize: "22px", fontWeight: 700, color: "#e8f0fe", fontFamily: "Inter", marginBottom: "6px" }}>
+                Verify your email
+              </h2>
+              <p style={{ fontSize: "13px", color: "#4a6080", fontFamily: "Inter", lineHeight: 1.55 }}>
+                We sent a 6-digit verification code to <span style={{ color: "#c8d8f0", fontWeight: 500 }}>{verificationEmail}</span>. Enter the code below to verify your account.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-5">
+              {/* OTP input */}
+              <div className="flex flex-col gap-2">
+                <label style={{ fontSize: "11px", fontWeight: 500, color: "#4a6080", fontFamily: "Inter", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                  Verification Code
+                </label>
+                <input
+                  value={verifyOtp}
+                  onChange={(e) => {
+                    setVerifyOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
+                    setVerifyOtpError("");
+                  }}
+                  placeholder="000000"
+                  maxLength={6}
+                  inputMode="numeric"
+                  style={{
+                    background: "rgba(6,14,30,0.9)",
+                    border: verifyOtpError ? "1px solid rgba(239,68,68,0.55)" : "1px solid rgba(28,50,84,0.9)",
+                    borderRadius: "16px",
+                    color: "#38bdf8",
+                    padding: "16px 20px",
+                    fontSize: "28px",
+                    fontWeight: 700,
+                    fontFamily: "Inter",
+                    letterSpacing: "10px",
+                    width: "100%",
+                    outline: "none",
+                    textAlign: "center",
+                  }}
+                />
+              </div>
+
+              {/* Error */}
+              <AnimatePresence>
+                {verifyOtpError && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="flex items-center gap-1.5 px-1"
+                  >
+                    <AlertCircle size={12} style={{ color: "#ef4444" }} />
+                    <span style={{ fontSize: "12px", color: "#ef4444", fontFamily: "Inter" }}>
+                      {verifyOtpError}
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <motion.button
+                whileTap={{ scale: loading ? 1 : 0.97 }}
+                onClick={handleVerifySignup}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 rounded-2xl py-4"
+                style={{
+                  background: loading ? "rgba(14,107,176,0.5)" : "linear-gradient(135deg, #0e6bb0, #0a4f8a)",
+                  border: "1px solid rgba(56,189,248,0.3)",
+                  color: "#e8f4ff",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  fontFamily: "Inter",
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                {loading ? (
+                  <>
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+                      style={{
+                        width: 17,
+                        height: 17,
+                        borderRadius: "50%",
+                        border: "2px solid rgba(255,255,255,0.2)",
+                        borderTop: "2px solid #e8f4ff",
+                      }}
+                    />
+                    Verifying…
+                  </>
+                ) : (
+                  <>
+                    Verify Account <ArrowRight size={17} />
+                  </>
+                )}
+              </motion.button>
+
+              {/* Resend */}
+              <p style={{ fontSize: "12px", color: "#3a5070", fontFamily: "Inter", textAlign: "center" }}>
+                Didn't receive the code?{" "}
+                {signupResendCooldown > 0 ? (
+                  <span style={{ color: "#2a4060" }}>Resend in {signupResendCooldown}s</span>
+                ) : (
+                  <button onClick={handleResendSignupOtp} style={{ color: "#38bdf8" }}>
+                    Resend code
+                  </button>
+                )}
+              </p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

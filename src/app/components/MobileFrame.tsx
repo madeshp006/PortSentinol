@@ -1,6 +1,9 @@
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
 
 export function MobileFrame() {
+  const location = useLocation();
+  const isAuthFlow = ["/", "/onboarding", "/auth"].includes(location.pathname);
+
   return (
     <div
       className="min-h-screen w-screen flex flex-col bg-[#020812] overflow-x-hidden relative"
@@ -19,8 +22,16 @@ export function MobileFrame() {
       </div>
 
       {/* Screen Content - fills remaining space */}
-      <div className="flex-1 flex flex-col relative w-full h-full">
-        <Outlet />
+      <div className="flex-1 flex flex-col relative w-full h-full justify-center items-center">
+        {isAuthFlow ? (
+          <div className="w-full h-screen flex flex-col justify-center items-center p-0 md:p-4">
+            <div className="w-full h-full md:h-[85vh] md:max-h-[820px] md:max-w-[480px] md:bg-[#040b19]/60 md:border md:border-[#1c3254]/60 md:rounded-[32px] md:shadow-[0_0_50px_rgba(0,0,0,0.6)] md:backdrop-blur-xl flex flex-col overflow-hidden relative">
+              <Outlet />
+            </div>
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </div>
     </div>
   );

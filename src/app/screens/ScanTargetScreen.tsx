@@ -64,6 +64,18 @@ export function ScanTargetScreen() {
   const [agents, setAgents] = useState<any[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [loadingAgents, setLoadingAgents] = useState(false);
+  const [scannerMode, setScannerMode] = useState("local");
+
+  useEffect(() => {
+    if (!token) return;
+    api.getQueueState(token)
+      .then((state) => {
+        if (state && state.scannerMode) {
+          setScannerMode(state.scannerMode);
+        }
+      })
+      .catch((e) => console.log("Load queue state error:", e.message));
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -120,7 +132,7 @@ export function ScanTargetScreen() {
   const isPrivate = isPrivateTarget(target);
   const onlineAgents = agents.filter((a) => a.status === "online");
   const hasOnlineAgents = onlineAgents.length > 0;
-  const cannotScan = isPrivate && !hasOnlineAgents;
+  const cannotScan = isPrivate && scannerMode === "agent" && !hasOnlineAgents;
 
   return (
     <div className="pb-6" style={{ minHeight: "780px" }}>
@@ -167,7 +179,7 @@ export function ScanTargetScreen() {
         </div>
 
         {/* Agent selection for private network scan targets */}
-        {isPrivate && (
+        {isPrivate && scannerMode === "agent" && (
           <div className="mt-3">
             {hasOnlineAgents ? (
               <div className="p-3.5 rounded-2xl" style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(56,189,248,0.3)" }}>

@@ -1,19 +1,29 @@
 import { useNavigate, useLocation } from "react-router";
 import { LayoutDashboard, Radar, Clock, Bell, User } from "lucide-react";
 import { useAlerts } from "../context/AlertsContext";
-
-const navItems = [
-  { icon: LayoutDashboard, label: "Home", path: "/app" },
-  { icon: Radar, label: "Scan", path: "/app/scan" },
-  { icon: Clock, label: "History", path: "/app/history" },
-  { icon: Bell, label: "Alerts", path: "/app/notifications" },
-  { icon: User, label: "Profile", path: "/app/profile" },
-];
+import { useAuth } from "../context/AuthContext";
 
 export function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { unreadCount } = useAlerts();
+  const { profile } = useAuth();
+
+  const role = profile?.role || "USER";
+  const navItems = [];
+
+  if (role === "SUPER_ADMIN") {
+    navItems.push({ icon: LayoutDashboard, label: "Admin", path: "/app/admin" });
+  } else if (role === "SECURITY_ANALYST") {
+    navItems.push({ icon: LayoutDashboard, label: "Analyst", path: "/app/analyst" });
+  } else {
+    navItems.push({ icon: LayoutDashboard, label: "Home", path: "/app" });
+  }
+
+  navItems.push({ icon: Radar, label: "Scan", path: "/app/scan" });
+  navItems.push({ icon: Clock, label: "History", path: "/app/history" });
+  navItems.push({ icon: Bell, label: "Alerts", path: "/app/notifications" });
+  navItems.push({ icon: User, label: "Profile", path: "/app/profile" });
 
   return (
     <div

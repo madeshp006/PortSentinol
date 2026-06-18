@@ -1,8 +1,12 @@
 import { Navigate, Outlet } from "react-router";
 import { useAuth } from "../context/AuthContext";
 
-export function ProtectedRoute() {
-  const { token, loading } = useAuth();
+interface ProtectedRouteProps {
+  allowedRoles?: string[];
+}
+
+export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
+  const { token, profile, loading } = useAuth();
 
   if (loading) {
     // Render a tiny dark spinner while we rehydrate localStorage
@@ -28,6 +32,11 @@ export function ProtectedRoute() {
 
   if (!token) {
     return <Navigate to="/auth" replace />;
+  }
+
+  if (allowedRoles && (!profile || !allowedRoles.includes(profile.role))) {
+    // Redirect unauthorized role to home app page
+    return <Navigate to="/app" replace />;
   }
 
   return <Outlet />;

@@ -1,16 +1,8 @@
 import { Outlet, useNavigate, useLocation } from "react-router";
 import { BottomNav } from "../components/BottomNav";
-import { LayoutDashboard, Radar, Clock, Bell, User, LogOut, ShieldAlert } from "lucide-react";
+import { LayoutDashboard, Radar, Clock, Bell, User, LogOut, ShieldAlert, Users, Cpu } from "lucide-react";
 import { useAlerts } from "../context/AlertsContext";
 import { useAuth } from "../context/AuthContext";
-
-const navItems = [
-  { icon: LayoutDashboard, label: "Home", path: "/app" },
-  { icon: Radar, label: "Scan", path: "/app/scan" },
-  { icon: Clock, label: "History", path: "/app/history" },
-  { icon: Bell, label: "Alerts", path: "/app/notifications" },
-  { icon: User, label: "Profile", path: "/app/profile" },
-];
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -22,6 +14,24 @@ export function AppLayout() {
     logout();
     navigate("/auth");
   };
+
+  const role = profile?.role || "USER";
+  const navItems = [];
+
+  if (role === "SUPER_ADMIN") {
+    navItems.push({ icon: LayoutDashboard, label: "Admin Dashboard", path: "/app/admin" });
+    navItems.push({ icon: Users, label: "User Control", path: "/app/admin/users" });
+  } else if (role === "SECURITY_ANALYST") {
+    navItems.push({ icon: LayoutDashboard, label: "Analyst Dashboard", path: "/app/analyst" });
+  } else {
+    navItems.push({ icon: LayoutDashboard, label: "Dashboard", path: "/app" });
+  }
+
+  navItems.push({ icon: Radar, label: "Scan", path: "/app/scan" });
+  navItems.push({ icon: Clock, label: "History", path: "/app/history" });
+  navItems.push({ icon: Cpu, label: "Agents", path: "/app/agents" });
+  navItems.push({ icon: Bell, label: "Alerts", path: "/app/notifications" });
+  navItems.push({ icon: User, label: "Profile", path: "/app/profile" });
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-[#020813] text-[#e2e8f0]">
@@ -93,7 +103,7 @@ export function AppLayout() {
           </div>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-400 transition-colors text-xs font-bold"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-red-500/25 bg-red-500/5 hover:bg-red-500/10 text-red-400 transition-colors text-xs font-bold"
           >
             <LogOut size={13} />
             Sign Out

@@ -196,8 +196,47 @@ export function ProfileScreen() {
           return sum + ports.filter((p) => p.risk === "critical" || p.risk === "high").length;
         }, 0);
         setThreatsFound(threats);
+
+        const lines = [
+          { ts: new Date(authProfile?.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), msg: "Session authenticated — operator verified", c: "#22c55e" }
+        ];
+
+        const sortedScans = [...scans].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        sortedScans.slice(0, 3).forEach((scan) => {
+          const timeStr = new Date(scan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const portsCount = scan.ports?.length || 0;
+          lines.push({
+            ts: timeStr,
+            msg: `Scan completed: ${scan.target} (${portsCount} ports identified)`,
+            c: "#38bdf8"
+          });
+          
+          const highRisk = scan.ports?.filter((p: any) => p.risk === "critical" || p.risk === "high") || [];
+          if (highRisk.length > 0) {
+            lines.push({
+              ts: timeStr,
+              msg: `Alert: ${highRisk.length} high-risk ports flagged on ${scan.target}`,
+              c: "#f97316"
+            });
+          }
+        });
+
+        if (scans.length === 0) {
+          lines.push({
+            ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            msg: "No scans recorded yet. Dashboard ready for deployment.",
+            c: "#a78bfa"
+          });
+        }
+
+        setLogLines(lines.slice(0, 5));
       })
-      .catch((e) => console.log("Load scans for stats error:", e.message));
+      .catch((e) => {
+        console.log("Load scans for stats error:", e.message);
+        setLogLines([
+          { ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), msg: "Failed to load recent network activity logs.", c: "#ef4444" }
+        ]);
+      });
   }, [token]);
 
   // Sync if authProfile gets updated externally (e.g. after Dashboard loads it)
@@ -240,13 +279,35 @@ export function ProfileScreen() {
     }
   };
 
-  // ── preferences
-  const [settings, setSettings] = useState({
-    notifications: true, criticalAlerts: true,
-    autoScan: false, darkMode: true,
-    scanHistory: true, biometric: false,
+  // ── preferences (persisted in localStorage)
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem("port_sentinel_prefs");
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.log("Failed to load settings from localStorage:", e);
+    }
+    return {
+      notifications: true,
+      criticalAlerts: true,
+      autoScan: false,
+      scanHistory: true,
+    };
   });
-  const toggle = (k: keyof typeof settings) => setSettings(p => ({ ...p, [k]: !p[k] }));
+
+  const toggle = (k: keyof typeof settings) => {
+    setSettings((p: any) => {
+      const next = { ...p, [k]: !p[k] };
+      try {
+        localStorage.setItem("port_sentinel_prefs", JSON.stringify(next));
+      } catch (e) {
+        console.log("Failed to save settings to localStorage:", e);
+      }
+      return next;
+    });
+  };
 
   // ── password change flow
   const [pwStep, setPwStep] = useState<PwStep>("idle");
@@ -266,13 +327,7 @@ export function ProfileScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── terminal log
-  const logLines = [
-    { ts: "04:02:11", msg: "Session authenticated — operator verified", c: "#22c55e" },
-    { ts: "03:58:44", msg: "Scan completed: 192.168.1.0/24", c: "#38bdf8" },
-    { ts: "03:55:12", msg: "High-risk port 445 flagged on host .105", c: "#f97316" },
-    { ts: "03:41:07", msg: "PDF report exported successfully", c: "#a78bfa" },
-    { ts: "03:30:00", msg: "Scheduled scan triggered: Daily sweep", c: "#38bdf8" },
-  ];
+  const [logLines, setLogLines] = useState<{ ts: string; msg: string; c: string }[]>([]);
 
   // Start/stop countdown when entering OTP step
   useEffect(() => {
@@ -790,18 +845,6 @@ export function ProfileScreen() {
               )}
             </AnimatePresence>
 
-            {/* Biometric row */}
-            <div className="flex items-center gap-3 px-4 py-3.5" style={{ borderTop: "1px solid rgba(28,50,84,0.5)" }}>
-              <div className="flex items-center justify-center rounded-xl"
-                style={{ width: 34, height: 34, background: "rgba(56,189,248,0.08)", border: "1px solid rgba(56,189,248,0.15)", flexShrink: 0 }}>
-                <Fingerprint size={15} style={{ color: "#38bdf8" }} />
-              </div>
-              <div className="flex-1">
-                <p style={{ fontSize: "13px", color: "#c8d8f0", fontFamily: "Inter" }}>Biometric Login</p>
-                <p style={{ fontSize: "10px", color: "#3a5070", fontFamily: "Inter" }}>Face ID / Fingerprint unlock</p>
-              </div>
-              <Toggle enabled={settings.biometric} onToggle={() => toggle("biometric")} />
-            </div>
           </div>
         </div>
 
@@ -1124,11 +1167,16 @@ export function ProfileScreen() {
                       disabled={feedbackText.trim().length < 10 || feedbackSending}
                       onClick={async () => {
                         if (feedbackText.trim().length < 10) return;
+                        if (!token) return;
                         setFeedbackSending(true);
-                        // Simulate a short delay for realism, then mark sent
-                        await new Promise((r) => setTimeout(r, 900));
-                        setFeedbackSending(false);
-                        setFeedbackSent(true);
+                        try {
+                          await api.sendFeedback(token, feedbackCategory, feedbackText.trim());
+                          setFeedbackSent(true);
+                        } catch (err: any) {
+                          alert(err.message || "Failed to submit feedback");
+                        } finally {
+                          setFeedbackSending(false);
+                        }
                       }}
                       className="w-full py-4 rounded-2xl flex items-center justify-center gap-2"
                       style={{

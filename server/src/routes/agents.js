@@ -3,7 +3,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { ZipArchive } from "archiver";
-import { authRequired } from "../middleware/auth.js";
+import { requireUser } from "../middleware/auth.js";
 import { agentAuth } from "../middleware/agentAuth.js";
 import { agentRepository } from "../repositories/agentRepository.js";
 import { scanJobRepository } from "../repositories/scanJobRepository.js";
@@ -19,7 +19,7 @@ const router = Router();
 // ─── USER AUTHENTICATED ROUTES ───────────────────────────────────────────────
 
 // POST /api/agents/register : Register a new agent
-router.post("/register", authRequired, async (req, res) => {
+router.post("/register", requireUser, async (req, res) => {
   const { name, deviceName, operatingSystem, version = "1.0.0" } = req.body || {};
 
   if (!name?.trim()) {
@@ -39,11 +39,11 @@ router.post("/register", authRequired, async (req, res) => {
       status: "online",
       lastSeen: new Date(),
       apiKey,
-      userId: req.auth.userId,
+      userId: req.user.id,
     });
 
     await logAudit({
-      userId: req.auth.userId,
+      userId: req.user.id,
       action: "agent.registered",
       entityType: "agent",
       entityId: agent.id,
@@ -51,7 +51,7 @@ router.post("/register", authRequired, async (req, res) => {
     });
 
     // Notify user dashboard of the new active agent
-    emitToUser(req.auth.userId, "agent:status", {
+    emitToUser(req.user.id, "agent:status", {
       agentId: agent.agentId,
       status: "online",
       agent: serialize(agent),
@@ -63,10 +63,15 @@ router.post("/register", authRequired, async (req, res) => {
   }
 });
 
-// GET /api/agents : List all agents for the authenticated user
-router.get("/", authRequired, async (req, res) => {
+// GET /api/agents : List all agents (scoped by role)
+router.get("/", requireUser, async (req, res) => {
   try {
-    const agents = await agentRepository.findByUserId(req.auth.userId);
+    let agents;
+    if (req.user.role === "SUPER_ADMIN" || req.user.role === "SECURITY_ANALYST") {
+      agents = await agentRepository.findAll();
+    } else {
+      agents = await agentRepository.findByUserId(req.user.id);
+    }
     return res.json(serializeMany(agents));
   } catch (err) {
     return res.status(500).json({ error: "Failed to list agents: " + err.message });
@@ -74,7 +79,7 @@ router.get("/", authRequired, async (req, res) => {
 });
 
 // GET /api/agents/download : Download the local agent package as a ZIP
-router.get("/download", authRequired, async (req, res) => {
+router.get("/download", requireUser, async (req, res) => {
   try {
     const archive = new ZipArchive({ zlib: { level: 9 } });
     res.setHeader("Content-Type", "application/zip");
@@ -113,7 +118,7 @@ router.get("/download", authRequired, async (req, res) => {
 
 
 // GET /api/agents/:id : Get details of a specific agent
-router.get("/:id", authRequired, async (req, res) => {
+router.get("/:id", requireUser, async (req, res) => {
   const { id } = req.params;
   try {
     let agent = await agentRepository.findById(id);
@@ -121,8 +126,12 @@ router.get("/:id", authRequired, async (req, res) => {
       agent = await agentRepository.findByAgentId(id);
     }
 
-    if (!agent || agent.userId !== req.auth.userId) {
+    if (!agent) {
       return res.status(404).json({ error: "Agent not found" });
+    }
+
+    if (req.user.role === "USER" && agent.userId !== req.user.id) {
+      return res.status(403).json({ error: "Access denied" });
     }
 
     return res.json(serialize(agent));
@@ -132,7 +141,7 @@ router.get("/:id", authRequired, async (req, res) => {
 });
 
 // DELETE /api/agents/:id : Deregister/delete an agent
-router.delete("/:id", authRequired, async (req, res) => {
+router.delete("/:id", requireUser, async (req, res) => {
   const { id } = req.params;
   try {
     let agent = await agentRepository.findById(id);
@@ -140,14 +149,20 @@ router.delete("/:id", authRequired, async (req, res) => {
       agent = await agentRepository.findByAgentId(id);
     }
 
-    if (!agent || agent.userId !== req.auth.userId) {
+    if (!agent) {
       return res.status(404).json({ error: "Agent not found" });
     }
 
-    await agentRepository.delete(agent.id, req.auth.userId);
+    if (req.user.role === "SUPER_ADMIN") {
+      await agentRepository.deleteGlobal(agent.id);
+    } else if (req.user.role === "USER" && agent.userId === req.user.id) {
+      await agentRepository.delete(agent.id, req.user.id);
+    } else {
+      return res.status(403).json({ error: "Access denied. Only the owner or an administrator can delete this agent." });
+    }
 
     await logAudit({
-      userId: req.auth.userId,
+      userId: req.user.id,
       action: "agent.deleted",
       entityType: "agent",
       entityId: agent.id,
@@ -155,7 +170,7 @@ router.delete("/:id", authRequired, async (req, res) => {
     });
 
     // Emit real-time offline status to disconnect UI
-    emitToUser(req.auth.userId, "agent:status", {
+    emitToUser(agent.userId, "agent:status", {
       agentId: agent.agentId,
       status: "offline",
       deleted: true,

@@ -66,6 +66,12 @@ export const scanRepository = {
     });
   },
 
+  async deleteGlobal(id) {
+    return prisma.scanResult.delete({
+      where: { id },
+    });
+  },
+
   async findByStatus(status) {
     return prisma.scanResult.findMany({
       where: { status },
@@ -74,5 +80,34 @@ export const scanRepository = {
 
   async countAll() {
     return prisma.scanResult.count();
+  },
+
+  async findAll() {
+    return prisma.scanResult.findMany({
+      orderBy: [
+        { requestedAt: "desc" },
+        { createdAt: "desc" },
+      ],
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+  },
+
+  async countSuccessful() {
+    return prisma.scanResult.count({
+      where: { status: "completed" },
+    });
+  },
+
+  async countFailed() {
+    return prisma.scanResult.count({
+      where: { status: "failed" },
+    });
   },
 };

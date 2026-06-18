@@ -29,4 +29,22 @@ export const userRepository = {
   async countAll() {
     return prisma.user.count();
   },
+
+  async countActive() {
+    return prisma.user.count({
+      where: { isActive: true },
+    });
+  },
+
+  async findAll() {
+    return prisma.user.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  async delete(id) {
+    return prisma.user.delete({
+      where: { id },
+    });
+  },
 };

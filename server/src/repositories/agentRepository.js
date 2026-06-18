@@ -58,6 +58,26 @@ export const agentRepository = {
     });
   },
 
+  async deleteGlobal(id) {
+    return prisma.agent.delete({
+      where: { id },
+    });
+  },
+
+  async findAll() {
+    return prisma.agent.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+  },
+
   async countAll() {
     return prisma.agent.count();
   },

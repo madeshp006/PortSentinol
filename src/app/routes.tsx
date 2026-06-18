@@ -20,6 +20,8 @@ import { ReportExportScreen } from "./screens/ReportExportScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { AdminDashboardScreen } from "./screens/AdminDashboardScreen";
+import { UserManagementScreen } from "./screens/UserManagementScreen";
+import { AnalystDashboardScreen } from "./screens/AnalystDashboardScreen";
 import { AgentsScreen } from "./screens/AgentsScreen";
 
 export const router = createBrowserRouter([
@@ -51,8 +53,24 @@ export const router = createBrowserRouter([
               { path: "notifications", Component: NotificationsScreen },
               { path: "reports", Component: ReportExportScreen },
               { path: "profile", Component: ProfileScreen },
-              { path: "admin", Component: AdminDashboardScreen },
               { path: "agents", Component: AgentsScreen },
+              
+              // Admin Only routes
+              {
+                element: <ProtectedRoute allowedRoles={["SUPER_ADMIN"]} />,
+                children: [
+                  { path: "admin", Component: AdminDashboardScreen },
+                  { path: "admin/users", Component: UserManagementScreen },
+                ],
+              },
+              
+              // Analyst & Admin routes
+              {
+                element: <ProtectedRoute allowedRoles={["SECURITY_ANALYST", "SUPER_ADMIN"]} />,
+                children: [
+                  { path: "analyst", Component: AnalystDashboardScreen },
+                ],
+              },
             ],
           },
         ],

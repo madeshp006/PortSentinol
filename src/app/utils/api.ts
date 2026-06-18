@@ -156,6 +156,55 @@ export const downloadAgentZip = async (token: string): Promise<Blob> => {
   return res.blob();
 };
 
+export const verifySignup = (email: string, otpCode: string) =>
+  request<{ session: { access_token: string; refresh_token: string }; user: any; profile: any }>("/auth/verify-signup", {
+    method: "POST",
+    body: JSON.stringify({ email, otpCode }),
+  });
+
+export const resendSignupOtp = (email: string) =>
+  request<{ success: boolean; message: string }>("/auth/resend-signup-otp", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+
 export const getAdminOverview = (token: string) =>
   request<any>("/admin/overview", {}, token);
+
+export const getAdminUsers = (token: string) =>
+  request<any[]>("/admin/users", {}, token);
+
+export const createAdminUser = (token: string, userData: any) =>
+  request<any>("/admin/users", {
+    method: "POST",
+    body: JSON.stringify(userData),
+  }, token);
+
+export const updateAdminUser = (token: string, id: string, updates: any) =>
+  request<any>(`/admin/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  }, token);
+
+export const deleteAdminUser = (token: string, id: string) =>
+  request<{ success: boolean }>(`/admin/users/${id}`, {
+    method: "DELETE",
+  }, token);
+
+export const emailReport = (token: string, scanId: string, recipientEmail: string) =>
+  request<{ success: boolean; message: string }>(`/scans/${scanId}/email-report`, {
+    method: "POST",
+    body: JSON.stringify({ email: recipientEmail }),
+  }, token);
+
+export const sendFeedback = (token: string, category: string, text: string) =>
+  request<{ success: boolean }>(`/profile/feedback`, {
+    method: "POST",
+    body: JSON.stringify({ category, text }),
+  }, token);
+
+export const getQueueState = (token: string) =>
+  request<any>("/scan/queue-state", {}, token);
+
+
 

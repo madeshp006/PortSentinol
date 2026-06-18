@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authRequired } from "../middleware/auth.js";
+import { requireUser } from "../middleware/auth.js";
 import { scanRepository } from "../repositories/scanRepository.js";
 import { agentRepository } from "../repositories/agentRepository.js";
 import { scanJobRepository } from "../repositories/scanJobRepository.js";
@@ -21,7 +21,7 @@ function totalPortsFor(scanType, portRange) {
   return estimateTotalPorts(scanType, portRange);
 }
 
-router.post("/start", authRequired, async (req, res) => {
+router.post("/start", requireUser, async (req, res) => {
   const { target, scanType = "quick", portRange = "", agentId } = req.body || {};
   if (!target?.trim()) {
     return res.status(400).json({ error: "Target is required" });
@@ -30,7 +30,7 @@ router.post("/start", authRequired, async (req, res) => {
   const scope = validateAuthorizedTarget(target);
   if (!scope.allowed) {
     await logAudit({
-      userId: req.auth.userId,
+      userId: req.user.id,
       action: "scan.blocked",
       entityType: "scan",
       metadata: { target, reason: scope.reason },
@@ -41,8 +41,9 @@ router.post("/start", authRequired, async (req, res) => {
   let selectedAgent = null;
   const normalizedTarget = scope.normalizedTarget || target.trim();
 
-  // If target is private, check if agent is specified and active
-  if (scope.isPrivate) {
+  const scannerMode = String(process.env.INTERNAL_SCANNER_MODE || "local").toLowerCase();
+  // If target is private, check if agent is specified and active (only required when in agent mode)
+  if (scope.isPrivate && scannerMode === "agent") {
     if (!agentId) {
       return res.status(400).json({
         error: "Private network scanning requires an active PortSentinel Agent",
@@ -55,8 +56,12 @@ router.post("/start", authRequired, async (req, res) => {
       selectedAgent = await agentRepository.findByAgentId(agentId);
     }
 
-    if (!selectedAgent || selectedAgent.userId !== req.auth.userId) {
+    if (!selectedAgent) {
       return res.status(404).json({ error: "Selected agent not found" });
+    }
+
+    if (req.user.role === "USER" && selectedAgent.userId !== req.user.id) {
+      return res.status(403).json({ error: "Access denied to selected agent" });
     }
 
     if (selectedAgent.status === "offline") {
@@ -73,12 +78,12 @@ router.post("/start", authRequired, async (req, res) => {
       portRange,
       status: "pending",
       agentId: selectedAgent.id,
-      userId: req.auth.userId,
+      userId: req.user.id,
     });
   }
 
   const scan = await scanRepository.create({
-    userId: req.auth.userId,
+    userId: req.user.id,
     target: normalizedTarget,
     scanType: displayScanType(scanType),
     portRange,
@@ -103,7 +108,7 @@ router.post("/start", authRequired, async (req, res) => {
   });
 
   await logAudit({
-    userId: req.auth.userId,
+    userId: req.user.id,
     action: "scan.queued",
     entityType: "scan",
     entityId: scan.id,
@@ -118,11 +123,15 @@ router.post("/start", authRequired, async (req, res) => {
   return res.status(202).json({ scan: serialize(scan), queue: getQueueState() });
 });
 
-router.get("/queue-state", authRequired, async (_req, res) => {
-  return res.json(getQueueState());
+router.get("/queue-state", requireUser, async (_req, res) => {
+  const mode = String(process.env.INTERNAL_SCANNER_MODE || "local").toLowerCase();
+  return res.json({
+    ...getQueueState(),
+    scannerMode: mode,
+  });
 });
 
-router.post("/stream", authRequired, async (_req, res) => {
+router.post("/stream", requireUser, async (_req, res) => {
   return res.status(410).json({
     error: "Streaming scans are no longer used in this build. Start a job with POST /api/scan/start and poll /api/scans/:id.",
   });
