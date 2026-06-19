@@ -9,6 +9,8 @@ node_modules/
 # Production
 /dist
 /build
+/client/dist
+/client/build
 
 # Environment variables (CRITICAL)
 .env
@@ -20,6 +22,11 @@ server/.env
 server/.env.local
 server/.env.development.local
 server/.env.production.local
+client/.env
+client/.env.local
+client/.env.development.local
+client/.env.test.local
+client/.env.production.local
 
 # Logs
 npm-debug.log*
@@ -35,3 +42,7 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Test outputs / reports
+*.pdf
+

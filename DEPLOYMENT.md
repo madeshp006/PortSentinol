@@ -80,14 +80,14 @@ Since the backend requires persistent WebSockets and background interval tasks (
 
 ## Phase 3: Deploying the Frontend on Vercel
 
-Vite creates static assets that Vercel serves globally. We have added a [vercel.json](./vercel.json) configuration in the root directory to route all clean URL requests (like `/dashboard`) back to `index.html` to support the client-side React Router.
+Vite creates static assets that Vercel serves globally. We have added a [vercel.json](./client/vercel.json) configuration in the `client` directory to route all clean URL requests (like `/dashboard`) back to `index.html` to support the client-side React Router.
 
 ### Setup Instructions
 1. Go to the [Vercel Dashboard](https://vercel.com/) and click **Add New** > **Project**.
 2. Select your GitHub repository.
 3. Configure the Project Settings:
    - **Framework Preset**: Vite
-   - **Root Directory**: Leave empty or set to `./` (Vercel will build from the root folder)
+   - **Root Directory**: `client`
    - **Build Command**: `npm run build`
    - **Output Directory**: `dist`
 4. Under **Environment Variables**, add:
