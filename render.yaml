@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: portsentinel-backend
+    env: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npx prisma db push && npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        sync: false # Provide your Aiven PostgreSQL Service URI
+      - key: JWT_SECRET
+        generateValue: true # Generates a secure random key automatically
+      - key: JWT_REFRESH_SECRET
+        generateValue: true # Generates a secure random key automatically
+      - key: CLIENT_ORIGIN
+        sync: false # Provide your Vercel deployment URL (e.g., https://portsentinel.vercel.app)
+      - key: INTERNAL_SCANNER_MODE
+        value: local
+      - key: RESEND_API_KEY
+        sync: false # Optional Resend key for email alerts
+      - key: MAIL_FROM
+        value: PortSentinel <onboarding@resend.dev>
