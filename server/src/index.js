@@ -42,11 +42,20 @@ app.use(cors({
     const isLocalhost = origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
     if (isLocalhost) return callback(null, true);
 
-    if (process.env.CLIENT_ORIGIN && origin === process.env.CLIENT_ORIGIN) {
+    const cleanOrigin = origin.replace(/\/$/, "");
+    const cleanClientOrigin = process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.replace(/\/$/, "") : "";
+
+    if (cleanClientOrigin && cleanOrigin === cleanClientOrigin) {
       return callback(null, true);
     }
 
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    // Allow vercel preview / production subdomains to make deployment seamless
+    if (origin.endsWith(".vercel.app")) {
+      return callback(null, true);
+    }
+
+    console.warn(`[CORS Blocked] Origin: ${origin} does not match CLIENT_ORIGIN: ${process.env.CLIENT_ORIGIN}`);
+    return callback(null, false);
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-agent-key"],
