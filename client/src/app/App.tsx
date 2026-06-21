@@ -3,6 +3,7 @@ import { router } from "./routes";
 import { AuthProvider } from "./context/AuthContext";
 import { AlertsProvider } from "./context/AlertsContext";
 import { SocketProvider } from "./context/SocketContext";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 export default function App() {
   return (
@@ -10,6 +11,7 @@ export default function App() {
       <SocketProvider>
         <AlertsProvider>
           <RouterProvider router={router} />
+          <SpeedInsights />
         </AlertsProvider>
       </SocketProvider>
     </AuthProvider>
