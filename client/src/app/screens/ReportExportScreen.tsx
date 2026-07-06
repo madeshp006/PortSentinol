@@ -333,20 +333,12 @@ export function ReportExportScreen() {
                 )}
               </motion.button>
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowEmailModal(true)}
-                  className="flex-1 py-3 rounded-xl bg-slate-900/60 border border-[#1c3254]/60 text-slate-300 hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-2"
-                >
-                  <Mail size={14} /> Send Email
-                </button>
-                <button
-                  onClick={handleShare}
-                  className="flex-1 py-3 rounded-xl bg-slate-900/60 border border-[#1c3254]/60 text-slate-300 hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-2"
-                >
-                  <Share2 size={14} /> Copy Link
-                </button>
-              </div>
+              <button
+                onClick={handleShare}
+                className="w-full py-3.5 rounded-xl bg-slate-900/60 border border-[#1c3254]/60 text-slate-300 hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-sky-500/5 transition-all"
+              >
+                <Share2 size={14} /> Copy Report Download Link
+              </button>
             </div>
           ) : (
             <motion.div
@@ -370,58 +362,7 @@ export function ReportExportScreen() {
         </>
       )}
 
-      {/* EMAIL MODAL */}
-      <AnimatePresence>
-        {showEmailModal && selectedScan && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-sm bg-slate-900 border border-[#1c3254] rounded-2xl overflow-hidden shadow-2xl"
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c3254]/40 bg-[#070d1e]">
-                <h3 className="font-bold text-slate-200 text-sm">Email Report Summary</h3>
-                <button onClick={() => setShowEmailModal(false)} className="text-slate-400 hover:text-white">
-                  <X size={16} />
-                </button>
-              </div>
-              <form onSubmit={handleEmailSubmit} className="p-5 flex flex-col gap-4">
-                <div>
-                  <p className="text-[11px] text-slate-500 mb-3">
-                    We will send a formatted HTML vulnerability summary for target <strong className="text-slate-300 font-mono">{selectedScan.target}</strong>.
-                  </p>
-                  <label className="block text-xs font-bold text-slate-400 mb-1.5">Recipient Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    className="w-full rounded-xl bg-[#030812] border border-[#1c3254] px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
-                    placeholder="analyst@company.com"
-                  />
-                </div>
-                <div className="flex gap-3 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowEmailModal(false)}
-                    className="flex-1 py-2.5 text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={emailSending}
-                    className="flex-1 py-2.5 text-xs font-bold bg-gradient-to-r from-sky-500 to-indigo-500 text-white rounded-xl hover:from-sky-400 hover:to-indigo-400 flex items-center justify-center gap-1 disabled:opacity-50"
-                  >
-                    {emailSending ? "Sending..." : "Send Report"}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+
     </div>
   );
 }

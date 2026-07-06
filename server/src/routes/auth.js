@@ -46,7 +46,7 @@ router.post("/signup", async (req, res) => {
     role: "USER",
   });
 
-  // Supabase Auth SignUp
+  // Supabase Auth SignUp: Dispatches default signup confirmation link
   try {
     const supabaseClient = getSupabase();
     const { error } = await supabaseClient.auth.signUp({
@@ -68,14 +68,15 @@ router.post("/signup", async (req, res) => {
   return res.status(201).json({
     requireVerification: true,
     email: user.email,
-    message: "Verification OTP sent to your email address."
+    message: "A verification link has been sent to your email address."
   });
 });
 
+//verify-signup is now a status check helper for checking link status
 router.post("/verify-signup", async (req, res) => {
-  const { email, otpCode } = req.body || {};
-  if (!email?.trim() || !otpCode?.trim()) {
-    return res.status(400).json({ error: "Email and verification code are required" });
+  const { email } = req.body || {};
+  if (!email?.trim()) {
+    return res.status(400).json({ error: "Email is required" });
   }
 
   const user = await userRepository.findByEmail(String(email).trim().toLowerCase());
@@ -83,63 +84,9 @@ router.post("/verify-signup", async (req, res) => {
     return res.status(404).json({ error: "User not found" });
   }
 
-  if (user.isVerified) {
-    return res.status(400).json({ error: "Account is already verified" });
-  }
-
-  // Supabase verify OTP
-  try {
-    const supabaseClient = getSupabase();
-    const { error } = await supabaseClient.auth.verifyOtp({
-      email: user.email,
-      token: String(otpCode).trim(),
-      type: "signup",
-    });
-
-    if (error) {
-      return res.status(400).json({ error: "Invalid or expired verification code: " + error.message });
-    }
-  } catch (err) {
-    return res.status(500).json({ error: "Verification failed: " + err.message });
-  }
-
-  // Mark verified
-  const updatedUser = await userRepository.update(user.id, {
-    isVerified: true,
-  });
-
-  // Create welcome alert
-  await alertRepository.create({
-    userId: updatedUser.id,
-    title: "Welcome to PortSentinel",
-    message: "Your account is verified and ready. Run your first scan to start building history.",
-    risk: "info",
-  });
-
-  await logAudit({
-    userId: updatedUser.id,
-    action: "user.register",
-    entityType: "user",
-    entityId: updatedUser.id,
-  });
-
-  // Sign Token
-  const accessToken = signToken(updatedUser);
-  const refreshToken = signRefreshToken(updatedUser);
-
-  await userRepository.update(updatedUser.id, { refreshToken });
-
-  res.cookie("refresh_token", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-  });
-
   return res.json({
-    session: { access_token: accessToken, refresh_token: refreshToken },
-    user: { id: updatedUser.id, email: updatedUser.email },
-    profile: profileForUser(updatedUser),
+    verified: user.isVerified,
+    message: "Verification is checked automatically during login."
   });
 });
 
@@ -158,7 +105,7 @@ router.post("/resend-signup-otp", async (req, res) => {
     return res.status(400).json({ error: "Account is already verified" });
   }
 
-  // Supabase resend signup OTP
+  // Supabase resends default confirmation link
   try {
     const supabaseClient = getSupabase();
     const { error } = await supabaseClient.auth.resend({
@@ -173,7 +120,7 @@ router.post("/resend-signup-otp", async (req, res) => {
     return res.status(500).json({ error: "Failed to resend verification email: " + err.message });
   }
 
-  return res.json({ success: true, message: "Verification code sent successfully" });
+  return res.json({ success: true, message: "Verification link sent successfully" });
 });
 
 router.post("/signin", async (req, res) => {
@@ -210,24 +157,48 @@ router.post("/signin", async (req, res) => {
     return res.status(403).json({ error: "Account is disabled. Please contact administrator." });
   }
 
+  // Check verification via Supabase on login if not yet marked verified locally
   if (!user.isVerified) {
-    // Resend signup verification via Supabase
     try {
       const supabaseClient = getSupabase();
-      const { error } = await supabaseClient.auth.resend({
-        type: "signup",
+      const { data: sbData, error: sbError } = await supabaseClient.auth.signInWithPassword({
         email: user.email,
+        password: password,
       });
-      if (error) throw error;
-    } catch (err) {
-      console.error("Failed to resend verification email on login:", err.message);
-    }
 
-    return res.status(403).json({
-      error: "Please verify your email to log in. Verification code sent!",
-      requireVerification: true,
-      email: user.email
-    });
+      if (!sbError && sbData?.user?.email_confirmed_at) {
+        // Confirmed! Update Aiven DB
+        await userRepository.update(user.id, { isVerified: true });
+        user.isVerified = true;
+
+        // Welcome Alert
+        await alertRepository.create({
+          userId: user.id,
+          title: "Welcome to PortSentinel",
+          message: "Your account is verified and ready. Run your first scan to start building history.",
+          risk: "info",
+        });
+      } else {
+        // Resend confirmation link
+        await supabaseClient.auth.resend({
+          type: "signup",
+          email: user.email,
+        });
+
+        return res.status(403).json({
+          error: "Please confirm your email by clicking the confirmation link sent to your inbox.",
+          requireVerification: true,
+          email: user.email
+        });
+      }
+    } catch (err) {
+      console.error("Supabase signin check failed:", err.message);
+      return res.status(403).json({
+        error: "Please confirm your email by clicking the confirmation link sent to your inbox.",
+        requireVerification: true,
+        email: user.email
+      });
+    }
   }
 
   const accessToken = signToken(user);
@@ -301,7 +272,7 @@ router.post("/logout", async (req, res) => {
   return res.json({ success: true });
 });
 
-// ─── Forgot password: send 6-digit OTP to email via Supabase ──────────────────
+// ─── Forgot password: sends default reset link via Supabase ─────────────────
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body || {};
   if (!email?.trim()) {
@@ -313,60 +284,64 @@ router.post("/forgot-password", async (req, res) => {
 
   if (user) {
     try {
+      const clientOrigin = process.env.CLIENT_ORIGIN || "https://portsentinel.vercel.app";
+      const redirectTo = `${clientOrigin.replace(/\/$/, "")}/auth`;
+      
       const supabaseClient = getSupabase();
-      const { error } = await supabaseClient.auth.resetPasswordForEmail(user.email);
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(user.email, { redirectTo });
       if (error) throw error;
     } catch (err) {
-      console.error("Failed to trigger forgot-password OTP:", err.message);
+      console.error("Failed to trigger forgot-password link:", err.message);
     }
   }
 
-  // Always return success to avoid email enumeration
+  // Always return success to prevent email scanning/enumeration attacks
   return res.json({ success: true });
 });
 
-// ─── Reset password: verify OTP and set new password (unauthenticated) ───────
+// ─── Reset password: uses accessToken from recovery link to reset password ──
 router.post("/reset-password", async (req, res) => {
-  const { email, otpCode, newPassword } = req.body || {};
+  const { otpCode, accessToken, newPassword } = req.body || {};
+  const token = accessToken || otpCode; // support both parameters for frontend compatibility
 
-  if (!email?.trim() || !otpCode || !newPassword) {
-    return res.status(400).json({ error: "Email, OTP code, and new password are required" });
+  if (!token || !newPassword) {
+    return res.status(400).json({ error: "Access token/reset token and new password are required" });
   }
   if (String(newPassword).length < 8) {
     return res.status(400).json({ error: "New password must be at least 8 characters" });
   }
 
-  const normalizedEmail = String(email).trim().toLowerCase();
-  const user = await userRepository.findByEmail(normalizedEmail);
-
-  if (!user) {
-    return res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
-  }
-
   try {
     const supabaseClient = getSupabase();
-    const { error } = await supabaseClient.auth.verifyOtp({
-      email: normalizedEmail,
-      token: String(otpCode).trim(),
-      type: "recovery",
+    // Resolve user details using the access token
+    const { data: { user: sbUser }, error: sbError } = await supabaseClient.auth.getUser(token);
+
+    if (sbError || !sbUser || !sbUser.email) {
+      return res.status(400).json({ error: "Invalid or expired recovery session. Please request a new link." });
+    }
+
+    const user = await userRepository.findByEmail(sbUser.email.toLowerCase());
+    if (!user) {
+      return res.status(404).json({ error: "User not found in Aiven database" });
+    }
+
+    // Hash and update local database
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await userRepository.update(user.id, {
+      password: passwordHash,
+      isVerified: true // mark verified as recovery link implies ownership
     });
 
-    if (error) {
-      return res.status(400).json({ error: "Invalid or expired reset code: " + error.message });
-    }
+    // Sync back password to Supabase Auth so logins continue working
+    await supabaseClient.auth.updateUser({ password: newPassword });
+
+    return res.json({ success: true });
   } catch (err) {
-    return res.status(500).json({ error: "Verification failed: " + err.message });
+    return res.status(500).json({ error: "Reset password failed: " + err.message });
   }
-
-  const passwordHash = await bcrypt.hash(newPassword, 10);
-  await userRepository.update(user.id, {
-    password: passwordHash,
-  });
-
-  return res.json({ success: true });
 });
 
-// ─── OTP send (authenticated — for in-app password change) ───────────────────
+// ─── OTP send (no longer needed, returned as success) ───────────────────────
 router.post("/otp/send", authRequired, async (req, res) => {
   const { oldPassword } = req.body || {};
   if (!oldPassword) {
@@ -383,22 +358,14 @@ router.post("/otp/send", authRequired, async (req, res) => {
     return res.status(401).json({ error: "Current password is incorrect" });
   }
 
-  try {
-    const supabaseClient = getSupabase();
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(user.email);
-    if (error) throw error;
-  } catch (err) {
-    return res.status(500).json({ error: "Failed to send verification code: " + err.message });
-  }
-
   return res.json({ success: true, email: user.email });
 });
 
-// ─── Change password (authenticated — in-app) ────────────────────────────────
+// ─── Change password (authenticated — direct password update) ───────────────
 router.post("/change-password", authRequired, async (req, res) => {
-  const { email, otpCode, newPassword } = req.body || {};
-  if (!otpCode || !newPassword) {
-    return res.status(400).json({ error: "OTP code and new password are required" });
+  const { oldPassword, newPassword } = req.body || {};
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ error: "Current password and new password are required" });
   }
   if (String(newPassword).length < 8) {
     return res.status(400).json({ error: "New password must be at least 8 characters" });
@@ -409,27 +376,23 @@ router.post("/change-password", authRequired, async (req, res) => {
     return res.status(404).json({ error: "User not found" });
   }
 
-  const emailToVerify = (email && email.trim()) ? email.trim().toLowerCase() : user.email;
-
-  try {
-    const supabaseClient = getSupabase();
-    const { error } = await supabaseClient.auth.verifyOtp({
-      email: emailToVerify,
-      token: String(otpCode).trim(),
-      type: "recovery",
-    });
-
-    if (error) {
-      return res.status(400).json({ error: "Invalid or expired verification code: " + error.message });
-    }
-  } catch (err) {
-    return res.status(500).json({ error: "Verification failed: " + err.message });
+  const matches = await bcrypt.compare(oldPassword, user.password);
+  if (!matches) {
+    return res.status(401).json({ error: "Current password is incorrect" });
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await userRepository.update(user.id, {
     password: passwordHash,
   });
+
+  // Keep Supabase Auth password in sync
+  try {
+    const supabaseClient = getSupabase();
+    await supabaseClient.auth.updateUser({ password: newPassword });
+  } catch (err) {
+    console.warn("Could not sync password change to Supabase:", err.message);
+  }
 
   return res.json({ success: true });
 });

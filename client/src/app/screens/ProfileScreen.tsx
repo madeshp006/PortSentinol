@@ -389,53 +389,21 @@ export function ProfileScreen() {
     if (!token) return setPwError("Session expired. Please sign in again.");
     setSendingOtp(true);
     try {
-      const res = await api.sendOtp(token, pwForm.old);
-      setOtpEmail(res.email || "your email");
-      setOtp(["", "", "", "", "", ""]);
-      setPwStep("otp");
-    } catch (e: any) {
-      console.log("Send OTP error:", e.message);
-      setPwError(e.message || "Failed to send verification code. Please try again.");
-    } finally {
-      setSendingOtp(false);
-    }
-  };
-
-  // ── Resend OTP (calls sendOtp again using same old password still in pwForm)
-  const resendOtp = async () => {
-    if (!token) return;
-    setSendingOtp(true);
-    setOtpError("");
-    try {
-      const res = await api.sendOtp(token, pwForm.old);
-      setOtpEmail(res.email || otpEmail);
-      setOtp(["", "", "", "", "", ""]);
-      setOtpTimer(60);
-    } catch (e: any) {
-      console.log("Resend OTP error:", e.message);
-      setOtpError(e.message || "Failed to resend code.");
-    } finally {
-      setSendingOtp(false);
-    }
-  };
-
-  // ── OTP verify + change password
-  const submitOtp = async () => {
-    setOtpError("");
-    const entered = otp.join("");
-    if (entered.length < 6) return setOtpError("Enter the full 6-digit code.");
-    if (!token) return setOtpError("Session expired. Please sign in again.");
-    setVerifyingOtp(true);
-    try {
-      await api.changePassword(token, entered, pwForm.newPw);
+      await api.changePassword(token, pwForm.old, pwForm.newPw);
       setPwStep("success");
     } catch (e: any) {
       console.log("Change password error:", e.message);
-      setOtpError(e.message || "Verification failed. Please try again.");
+      setPwError(e.message || "Failed to update password. Please try again.");
     } finally {
-      setVerifyingOtp(false);
+      setSendingOtp(false);
     }
   };
+
+  // ── Resend OTP (no longer used)
+  const resendOtp = async () => {};
+
+  // ── OTP verify + change password (no longer used)
+  const submitOtp = async () => {};
 
   // ── reset entire flow
   const resetPw = () => {
@@ -735,8 +703,8 @@ export function ProfileScreen() {
                               className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5"
                               style={{ background: "linear-gradient(135deg,rgba(251,191,36,0.2),rgba(245,158,11,0.15))", border: "1px solid rgba(251,191,36,0.35)", color: "#fbbf24", fontSize: "12px", fontFamily: "Inter", fontWeight: 600, opacity: sendingOtp ? 0.6 : 1 }}>
                               {sendingOtp
-                                ? <><RefreshCw size={13} className="animate-spin" /> Sending…</>
-                                : <><Smartphone size={13} /> Send Code via Email</>}
+                                ? <><RefreshCw size={13} className="animate-spin" /> Updating…</>
+                                : <><Key size={13} /> Update Password</>}
                             </motion.button>
                             <button type="button" onClick={resetPw} className="px-3 py-2.5 rounded-xl"
                               style={{ background: "rgba(28,50,84,0.3)", border: "1px solid rgba(28,50,84,0.6)", color: "#3a5070" }}>

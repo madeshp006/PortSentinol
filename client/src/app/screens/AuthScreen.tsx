@@ -128,12 +128,16 @@ function Banner({
 
 // ─── Forgot-password overlay (email OTP flow) ────────────────────────────────
 
-type ForgotStep = "email" | "otp" | "success";
+type ForgotStep = "email" | "linkSent" | "reset" | "success";
 
-function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState<ForgotStep>("email");
+interface ForgotPasswordOverlayProps {
+  onClose: () => void;
+  recoveryToken?: string | null;
+}
+
+function ForgotPasswordOverlay({ onClose, recoveryToken }: ForgotPasswordOverlayProps) {
+  const [step, setStep] = useState<ForgotStep>(recoveryToken ? "reset" : "email");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [showNewPass, setShowNewPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -147,7 +151,7 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
     return () => clearTimeout(t);
   }, [resendCooldown]);
 
-  const handleSendOtp = async (isResend = false) => {
+  const handleSendLink = async (isResend = false) => {
     const trimmed = email.trim();
     if (!trimmed) { setErr("Please enter your email address."); return; }
     if (!isValidEmail(trimmed)) { setErr("Enter a valid email address."); return; }
@@ -155,26 +159,26 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
     setLoading(true);
     try {
       await api.forgotPassword(trimmed);
-      setStep("otp");
+      setStep("linkSent");
       setResendCooldown(60);
     } catch (e: any) {
-      setErr(e.message || "Failed to send code. Please try again.");
+      setErr(e.message || "Failed to send reset link. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifyAndReset = async () => {
-    if (otp.trim().length !== 6) { setErr("Enter the 6-digit code from your email."); return; }
+  const handleResetPassword = async () => {
     if (!newPassword) { setErr("Enter your new password."); return; }
     if (newPassword.length < 8) { setErr("Password must be at least 8 characters."); return; }
+    if (!recoveryToken) { setErr("Recovery token is missing. Please request a new link."); return; }
     setErr("");
     setLoading(true);
     try {
-      await api.resetPassword(email.trim(), otp.trim(), newPassword);
+      await api.resetPassword("", recoveryToken, newPassword);
       setStep("success");
     } catch (e: any) {
-      setErr(e.message || "Invalid or expired code. Please try again.");
+      setErr(e.message || "Reset failed. The link might be expired or invalid.");
     } finally {
       setLoading(false);
     }
@@ -189,7 +193,7 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
       style={{ background: "#060e1e" }}
     >
       {/* Header */}
-      {step !== "success" && (
+      {step !== "success" && step !== "linkSent" && (
         <button
           onClick={onClose}
           className="flex items-center gap-1 mb-6"
@@ -213,7 +217,7 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
               Reset your password
             </h2>
             <p style={{ fontSize: "13px", color: "#4a6080", fontFamily: "Inter", lineHeight: 1.55 }}>
-              Enter your registered email and we'll send you a 6-digit verification code.
+              Enter your registered email and we'll send you a password reset link.
             </p>
           </div>
           <div className="flex flex-col gap-4">
@@ -227,7 +231,7 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
             />
             <motion.button
               whileTap={{ scale: loading ? 1 : 0.97 }}
-              onClick={() => handleSendOtp(false)}
+              onClick={() => handleSendLink(false)}
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 rounded-2xl py-4"
               style={{ background: loading ? "rgba(14,107,176,0.5)" : "linear-gradient(135deg, #0e6bb0, #0a4f8a)", border: "1px solid rgba(56,189,248,0.3)", color: "#e8f4ff", fontSize: "15px", fontWeight: 600, fontFamily: "Inter", boxShadow: "0 4px 20px rgba(56,189,248,0.18)", cursor: loading ? "not-allowed" : "pointer" }}
@@ -235,10 +239,10 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
               {loading ? (
                 <>
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }} style={{ width: 17, height: 17, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTop: "2px solid #e8f4ff" }} />
-                  Sending code…
+                  Sending link…
                 </>
               ) : (
-                <>Send Verification Code <ArrowRight size={17} /></>
+                <>Send Reset Link <ArrowRight size={17} /></>
               )}
             </motion.button>
             <p style={{ fontSize: "12px", color: "#3a5070", fontFamily: "Inter", textAlign: "center" }}>
@@ -249,8 +253,32 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
         </>
       )}
 
-      {/* Step: Enter OTP + new password */}
-      {step === "otp" && (
+      {/* Step: Link Sent */}
+      {step === "linkSent" && (
+        <div className="flex flex-col items-center justify-center flex-1 text-center">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full rounded-2xl p-8 flex flex-col items-center" style={{ background: "rgba(56,189,248,0.07)", border: "1px solid rgba(56,189,248,0.2)" }}>
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mb-5" style={{ background: "rgba(56,189,248,0.15)" }}>
+              <Mail size={28} color="#38bdf8" />
+            </div>
+            <p style={{ fontSize: "18px", fontWeight: 700, color: "#38bdf8", fontFamily: "Inter", marginBottom: "10px" }}>
+              Reset Link Sent
+            </p>
+            <p style={{ fontSize: "13px", color: "#4a6080", fontFamily: "Inter", lineHeight: 1.6 }}>
+              A password reset link has been emailed to <strong style={{ color: "#c8d8f0" }}>{email}</strong>. Please check your inbox and click the link to configure your new password.
+            </p>
+            <button
+              onClick={onClose}
+              className="mt-6 w-full py-3 rounded-xl"
+              style={{ background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.25)", color: "#38bdf8", fontSize: "14px", fontFamily: "Inter", fontWeight: 500 }}
+            >
+              Back to Sign In
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Step: Enter new password (redirected from email) */}
+      {step === "reset" && (
         <>
           <div className="mb-6">
             <div
@@ -260,34 +288,14 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
               <KeyRound size={20} color="#38bdf8" strokeWidth={1.5} />
             </div>
             <h2 style={{ fontSize: "22px", fontWeight: 700, color: "#e8f0fe", fontFamily: "Inter", marginBottom: "6px" }}>
-              Enter your code
+              Set new password
             </h2>
             <p style={{ fontSize: "13px", color: "#4a6080", fontFamily: "Inter", lineHeight: 1.55 }}>
-              We sent a 6-digit code to <span style={{ color: "#c8d8f0" }}>{email.trim()}</span>. Enter it below along with your new password.
+              Choose a strong password with at least 8 characters.
             </p>
           </div>
 
           <div className="flex flex-col gap-4">
-            {/* OTP input */}
-            <div className="flex flex-col gap-1">
-              <label style={{ fontSize: "11px", fontWeight: 500, color: "#4a6080", fontFamily: "Inter", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                Verification Code
-              </label>
-              <input
-                value={otp}
-                onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setErr(""); }}
-                placeholder="000000"
-                maxLength={6}
-                inputMode="numeric"
-                style={{
-                  background: "rgba(6,14,30,0.9)", border: err && otp.length !== 6 ? "1px solid rgba(239,68,68,0.55)" : "1px solid rgba(28,50,84,0.9)", borderRadius: "16px",
-                  color: "#38bdf8", padding: "16px 20px", fontSize: "28px", fontWeight: 700, fontFamily: "Inter", letterSpacing: "10px",
-                  width: "100%", outline: "none", textAlign: "center",
-                }}
-              />
-            </div>
-
-            {/* New password */}
             <Field
               icon={Lock}
               placeholder="New password (min. 8 characters)"
@@ -317,7 +325,7 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
 
             <motion.button
               whileTap={{ scale: loading ? 1 : 0.97 }}
-              onClick={handleVerifyAndReset}
+              onClick={handleResetPassword}
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 rounded-2xl py-4"
               style={{ background: loading ? "rgba(14,107,176,0.5)" : "linear-gradient(135deg, #0e6bb0, #0a4f8a)", border: "1px solid rgba(56,189,248,0.3)", color: "#e8f4ff", fontSize: "15px", fontWeight: 600, fontFamily: "Inter", cursor: loading ? "not-allowed" : "pointer" }}
@@ -325,22 +333,12 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
               {loading ? (
                 <>
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }} style={{ width: 17, height: 17, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTop: "2px solid #e8f4ff" }} />
-                  Resetting password…
+                  Updating password…
                 </>
               ) : (
                 <>Reset Password <ArrowRight size={17} /></>
               )}
             </motion.button>
-
-            {/* Resend */}
-            <p style={{ fontSize: "12px", color: "#3a5070", fontFamily: "Inter", textAlign: "center" }}>
-              Didn't receive the code?{" "}
-              {resendCooldown > 0 ? (
-                <span style={{ color: "#2a4060" }}>Resend in {resendCooldown}s</span>
-              ) : (
-                <button onClick={() => handleSendOtp(true)} style={{ color: "#38bdf8" }}>Resend code</button>
-              )}
-            </p>
           </div>
         </>
       )}
@@ -353,10 +351,10 @@ function ForgotPasswordOverlay({ onClose }: { onClose: () => void }) {
               <CheckCircle size={28} color="#22c55e" />
             </div>
             <p style={{ fontSize: "18px", fontWeight: 700, color: "#22c55e", fontFamily: "Inter", marginBottom: "10px" }}>
-              Password reset!
+              Password updated!
             </p>
             <p style={{ fontSize: "13px", color: "#4a6080", fontFamily: "Inter", lineHeight: 1.6 }}>
-              Your password has been successfully updated. Sign in with your new password.
+              Your password has been successfully reset. You can now sign in with your new password.
             </p>
             <button
               onClick={onClose}
@@ -410,6 +408,25 @@ export function AuthScreen() {
   const [verifyOtp, setVerifyOtp] = useState("");
   const [verifyOtpError, setVerifyOtpError] = useState("");
   const [signupResendCooldown, setSignupResendCooldown] = useState(0);
+  const [recoveryAccessToken, setRecoveryAccessToken] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash && hash.includes("type=recovery")) {
+        const params = new URLSearchParams(hash.substring(1));
+        const accessToken = params.get("access_token");
+        if (accessToken) {
+          setRecoveryAccessToken(accessToken);
+          window.location.hash = ""; // Clear hash
+        }
+      }
+    };
+
+    handleHashChange();
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   // Countdown timer for signup OTP resend
   React.useEffect(() => {
@@ -577,12 +594,18 @@ export function AuthScreen() {
 
       {/* Forgot password slide-in overlay */}
       <AnimatePresence>
-        {showForgot && (
-          <ForgotPasswordOverlay onClose={() => setShowForgot(false)} />
+        {(showForgot || recoveryAccessToken) && (
+          <ForgotPasswordOverlay
+            recoveryToken={recoveryAccessToken}
+            onClose={() => {
+              setShowForgot(false);
+              setRecoveryAccessToken(null);
+            }}
+          />
         )}
       </AnimatePresence>
 
-      {/* OTP verification slide-in overlay */}
+      {/* Email link verification slide-in overlay */}
       <AnimatePresence>
         {showVerifySignup && (
           <motion.div
@@ -614,110 +637,45 @@ export function AuthScreen() {
                   boxShadow: "0 0 18px rgba(56,189,248,0.12)",
                 }}
               >
-                <KeyRound size={20} color="#38bdf8" strokeWidth={1.5} />
+                <Mail size={20} color="#38bdf8" strokeWidth={1.5} />
               </div>
               <h2 style={{ fontSize: "22px", fontWeight: 700, color: "#e8f0fe", fontFamily: "Inter", marginBottom: "6px" }}>
                 Verify your email
               </h2>
               <p style={{ fontSize: "13px", color: "#4a6080", fontFamily: "Inter", lineHeight: 1.55 }}>
-                We sent a 6-digit verification code to <span style={{ color: "#c8d8f0", fontWeight: 500 }}>{verificationEmail}</span>. Enter the code below to verify your account.
+                A confirmation link has been sent to <span style={{ color: "#c8d8f0", fontWeight: 500 }}>{verificationEmail}</span>. Please check your inbox and click the link to verify your account.
               </p>
             </div>
 
             <div className="flex flex-col gap-5">
-              {/* OTP input */}
-              <div className="flex flex-col gap-2">
-                <label style={{ fontSize: "11px", fontWeight: 500, color: "#4a6080", fontFamily: "Inter", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                  Verification Code
-                </label>
-                <input
-                  value={verifyOtp}
-                  onChange={(e) => {
-                    setVerifyOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
-                    setVerifyOtpError("");
-                  }}
-                  placeholder="000000"
-                  maxLength={6}
-                  inputMode="numeric"
-                  style={{
-                    background: "rgba(6,14,30,0.9)",
-                    border: verifyOtpError ? "1px solid rgba(239,68,68,0.55)" : "1px solid rgba(28,50,84,0.9)",
-                    borderRadius: "16px",
-                    color: "#38bdf8",
-                    padding: "16px 20px",
-                    fontSize: "28px",
-                    fontWeight: 700,
-                    fontFamily: "Inter",
-                    letterSpacing: "10px",
-                    width: "100%",
-                    outline: "none",
-                    textAlign: "center",
-                  }}
-                />
-              </div>
-
-              {/* Error */}
-              <AnimatePresence>
-                {verifyOtpError && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="flex items-center gap-1.5 px-1"
-                  >
-                    <AlertCircle size={12} style={{ color: "#ef4444" }} />
-                    <span style={{ fontSize: "12px", color: "#ef4444", fontFamily: "Inter" }}>
-                      {verifyOtpError}
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
               <motion.button
-                whileTap={{ scale: loading ? 1 : 0.97 }}
-                onClick={handleVerifySignup}
-                disabled={loading}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => {
+                  setShowVerifySignup(false);
+                  setTab("login");
+                }}
                 className="w-full flex items-center justify-center gap-2 rounded-2xl py-4"
                 style={{
-                  background: loading ? "rgba(14,107,176,0.5)" : "linear-gradient(135deg, #0e6bb0, #0a4f8a)",
+                  background: "linear-gradient(135deg, #0e6bb0, #0a4f8a)",
                   border: "1px solid rgba(56,189,248,0.3)",
                   color: "#e8f4ff",
                   fontSize: "15px",
                   fontWeight: 600,
                   fontFamily: "Inter",
-                  cursor: loading ? "not-allowed" : "pointer",
+                  cursor: "pointer",
                 }}
               >
-                {loading ? (
-                  <>
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
-                      style={{
-                        width: 17,
-                        height: 17,
-                        borderRadius: "50%",
-                        border: "2px solid rgba(255,255,255,0.2)",
-                        borderTop: "2px solid #e8f4ff",
-                      }}
-                    />
-                    Verifying…
-                  </>
-                ) : (
-                  <>
-                    Verify Account <ArrowRight size={17} />
-                  </>
-                )}
+                Back to Sign In
               </motion.button>
 
               {/* Resend */}
               <p style={{ fontSize: "12px", color: "#3a5070", fontFamily: "Inter", textAlign: "center" }}>
-                Didn't receive the code?{" "}
+                Didn't receive the email?{" "}
                 {signupResendCooldown > 0 ? (
-                  <span style={{ color: "#2a4060" }}>Resend in {signupResendCooldown}s</span>
+                  <span style={{ color: "#2a4060" }}>Resend link in {signupResendCooldown}s</span>
                 ) : (
                   <button onClick={handleResendSignupOtp} style={{ color: "#38bdf8" }}>
-                    Resend code
+                    Resend link
                   </button>
                 )}
               </p>
