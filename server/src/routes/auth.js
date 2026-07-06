@@ -396,7 +396,7 @@ router.post("/otp/send", authRequired, async (req, res) => {
 
 // ─── Change password (authenticated — in-app) ────────────────────────────────
 router.post("/change-password", authRequired, async (req, res) => {
-  const { otpCode, newPassword } = req.body || {};
+  const { email, otpCode, newPassword } = req.body || {};
   if (!otpCode || !newPassword) {
     return res.status(400).json({ error: "OTP code and new password are required" });
   }
@@ -409,10 +409,12 @@ router.post("/change-password", authRequired, async (req, res) => {
     return res.status(404).json({ error: "User not found" });
   }
 
+  const emailToVerify = (email && email.trim()) ? email.trim().toLowerCase() : user.email;
+
   try {
     const supabaseClient = getSupabase();
     const { error } = await supabaseClient.auth.verifyOtp({
-      email: user.email,
+      email: emailToVerify,
       token: String(otpCode).trim(),
       type: "recovery",
     });
