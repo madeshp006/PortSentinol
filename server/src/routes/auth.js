@@ -6,8 +6,8 @@ import { alertRepository } from "../repositories/alertRepository.js";
 import { authRequired } from "../middleware/auth.js";
 import { signToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt.js";
 import { serialize } from "../utils/serialize.js";
-import { sendMail } from "../utils/mailer.js";
 import { logAudit } from "../services/audit.js";
+import { getSupabase } from "../utils/supabase.js";
 
 const router = Router();
 
@@ -37,9 +37,6 @@ router.post("/signup", async (req, res) => {
     return res.status(409).json({ error: "An account with this email already exists" });
   }
 
-  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
-
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await userRepository.create({
     name: String(name).trim(),
@@ -47,32 +44,25 @@ router.post("/signup", async (req, res) => {
     password: passwordHash,
     isVerified: false,
     role: "USER",
-    otpCode,
-    otpExpiresAt,
   });
 
-  // Send verification email
+  // Supabase Auth SignUp
   try {
-    await sendMail({
-      to: user.email,
-      subject: "Verify your PortSentinel Account",
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #070d1e; color: #c8d8f0; border-radius: 12px; border: 1px solid #1c3254;">
-          <h2 style="color: #38bdf8; text-align: center;">Verify Your Account</h2>
-          <p>Hi ${user.name},</p>
-          <p>Thank you for signing up for PortSentinel. Please use the following One-Time Password (OTP) to verify your account and complete your registration:</p>
-          <div style="font-size: 32px; font-weight: bold; color: #38bdf8; letter-spacing: 6px; text-align: center; margin: 30px 0; background-color: rgba(56,189,248,0.06); padding: 15px; border-radius: 8px; border: 1px solid rgba(56,189,248,0.18);">
-            ${otpCode}
-          </div>
-          <p>This code will expire in 15 minutes.</p>
-          <p style="color: #4a6080; font-size: 12px; margin-top: 30px; border-top: 1px solid rgba(28,50,84,0.4); padding-top: 15px;">
-            If you did not request this verification, please ignore this email.
-          </p>
-        </div>
-      `,
+    const supabaseClient = getSupabase();
+    const { error } = await supabaseClient.auth.signUp({
+      email: normalizedEmail,
+      password: password,
     });
+
+    if (error) {
+      console.error("Supabase signup error:", error.message);
+      if (!error.message.includes("already registered")) {
+        throw error;
+      }
+    }
   } catch (err) {
-    console.error("Failed to send verification email:", err.message);
+    console.error("Failed to trigger Supabase verification:", err.message);
+    return res.status(500).json({ error: "Failed to trigger Supabase verification: " + err.message });
   }
 
   return res.status(201).json({
@@ -97,19 +87,25 @@ router.post("/verify-signup", async (req, res) => {
     return res.status(400).json({ error: "Account is already verified" });
   }
 
-  if (user.otpCode !== String(otpCode).trim()) {
-    return res.status(400).json({ error: "Invalid verification code" });
+  // Supabase verify OTP
+  try {
+    const supabaseClient = getSupabase();
+    const { error } = await supabaseClient.auth.verifyOtp({
+      email: user.email,
+      token: String(otpCode).trim(),
+      type: "signup",
+    });
+
+    if (error) {
+      return res.status(400).json({ error: "Invalid or expired verification code: " + error.message });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: "Verification failed: " + err.message });
   }
 
-  if (user.otpExpiresAt && new Date() > new Date(user.otpExpiresAt)) {
-    return res.status(400).json({ error: "Verification code has expired" });
-  }
-
-  // Mark verified, clear OTP
+  // Mark verified
   const updatedUser = await userRepository.update(user.id, {
     isVerified: true,
-    otpCode: null,
-    otpExpiresAt: null,
   });
 
   // Create welcome alert
@@ -162,29 +158,19 @@ router.post("/resend-signup-otp", async (req, res) => {
     return res.status(400).json({ error: "Account is already verified" });
   }
 
-  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
-
-  await userRepository.update(user.id, { otpCode, otpExpiresAt });
-
+  // Supabase resend signup OTP
   try {
-    await sendMail({
-      to: user.email,
-      subject: "Verify your PortSentinel Account",
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #070d1e; color: #c8d8f0; border-radius: 12px; border: 1px solid #1c3254;">
-          <h2 style="color: #38bdf8; text-align: center;">Verify Your Account</h2>
-          <p>Hi ${user.name},</p>
-          <p>Please use the following One-Time Password (OTP) to verify your account and complete your registration:</p>
-          <div style="font-size: 32px; font-weight: bold; color: #38bdf8; letter-spacing: 6px; text-align: center; margin: 30px 0; background-color: rgba(56,189,248,0.06); padding: 15px; border-radius: 8px; border: 1px solid rgba(56,189,248,0.18);">
-            ${otpCode}
-          </div>
-          <p>This code will expire in 15 minutes.</p>
-        </div>
-      `,
+    const supabaseClient = getSupabase();
+    const { error } = await supabaseClient.auth.resend({
+      type: "signup",
+      email: user.email,
     });
+
+    if (error) {
+      throw error;
+    }
   } catch (err) {
-    return res.status(500).json({ error: "Failed to send verification email: " + err.message });
+    return res.status(500).json({ error: "Failed to resend verification email: " + err.message });
   }
 
   return res.json({ success: true, message: "Verification code sent successfully" });
@@ -225,27 +211,14 @@ router.post("/signin", async (req, res) => {
   }
 
   if (!user.isVerified) {
-    // Generate new OTP and resend
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
-    await userRepository.update(user.id, { otpCode, otpExpiresAt });
-
+    // Resend signup verification via Supabase
     try {
-      await sendMail({
-        to: user.email,
-        subject: "Verify your PortSentinel Account",
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #070d1e; color: #c8d8f0; border-radius: 12px; border: 1px solid #1c3254;">
-            <h2 style="color: #38bdf8; text-align: center;">Verify Your Account</h2>
-            <p>Hi ${user.name},</p>
-            <p>Please use the following One-Time Password (OTP) to verify your account and complete your login:</p>
-            <div style="font-size: 32px; font-weight: bold; color: #38bdf8; letter-spacing: 6px; text-align: center; margin: 30px 0; background-color: rgba(56,189,248,0.06); padding: 15px; border-radius: 8px; border: 1px solid rgba(56,189,248,0.18);">
-              ${otpCode}
-            </div>
-            <p>This code will expire in 15 minutes.</p>
-          </div>
-        `,
+      const supabaseClient = getSupabase();
+      const { error } = await supabaseClient.auth.resend({
+        type: "signup",
+        email: user.email,
       });
+      if (error) throw error;
     } catch (err) {
       console.error("Failed to resend verification email on login:", err.message);
     }
@@ -328,7 +301,7 @@ router.post("/logout", async (req, res) => {
   return res.json({ success: true });
 });
 
-// ─── Forgot password: send 6-digit OTP to email ──────────────────────────────
+// ─── Forgot password: send 6-digit OTP to email via Supabase ──────────────────
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body || {};
   if (!email?.trim()) {
@@ -339,36 +312,13 @@ router.post("/forgot-password", async (req, res) => {
   const user = await userRepository.findByEmail(normalizedEmail);
 
   if (user) {
-    const otpCode = `${Math.floor(100000 + Math.random() * 900000)}`;
-    await userRepository.update(user.id, {
-      otpCode,
-      otpExpiresAt: new Date(Date.now() + 1000 * 60 * 15),
-      passwordResetToken: null,
-      passwordResetExpiresAt: null,
-    });
-
-    await sendMail({
-      to: user.email,
-      subject: "PortSentinel — Password Reset Code",
-      text: `Your PortSentinel password reset code is: ${otpCode}\n\nIt expires in 15 minutes. If you did not request this, ignore this email.`,
-      html: `
-        <div style="font-family:Inter,sans-serif;max-width:480px;margin:auto;background:#060e1e;color:#c8d8f0;border-radius:12px;padding:32px;border:1px solid #1c3254">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
-            <span style="font-size:20px;font-weight:700;color:#e8f0fe">Port<span style="color:#38bdf8">Sentinel</span></span>
-          </div>
-          <h2 style="font-size:18px;font-weight:700;color:#e8f0fe;margin:0 0 8px">Password Reset Code</h2>
-          <p style="font-size:14px;color:#4a6080;margin:0 0 24px;line-height:1.6">
-            Use the code below to reset your password. It expires in <strong style="color:#c8d8f0">15 minutes</strong>.
-          </p>
-          <div style="background:#0a1e38;border:1px solid rgba(56,189,248,0.3);border-radius:12px;padding:24px;text-align:center;margin-bottom:24px">
-            <span style="font-size:36px;font-weight:700;letter-spacing:10px;color:#38bdf8">${otpCode}</span>
-          </div>
-          <p style="font-size:12px;color:#3a5070;line-height:1.6;margin:0">
-            If you did not request a password reset, you can safely ignore this email.
-          </p>
-        </div>
-      `,
-    });
+    try {
+      const supabaseClient = getSupabase();
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(user.email);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Failed to trigger forgot-password OTP:", err.message);
+    }
   }
 
   // Always return success to avoid email enumeration
@@ -392,18 +342,25 @@ router.post("/reset-password", async (req, res) => {
   if (!user) {
     return res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
   }
-  if (!user.otpCode || !user.otpExpiresAt || user.otpExpiresAt.getTime() < Date.now()) {
-    return res.status(400).json({ error: "Verification code has expired. Please request a new one." });
-  }
-  if (String(otpCode).trim() !== String(user.otpCode).trim()) {
-    return res.status(400).json({ error: "Incorrect verification code." });
+
+  try {
+    const supabaseClient = getSupabase();
+    const { error } = await supabaseClient.auth.verifyOtp({
+      email: normalizedEmail,
+      token: String(otpCode).trim(),
+      type: "recovery",
+    });
+
+    if (error) {
+      return res.status(400).json({ error: "Invalid or expired reset code: " + error.message });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: "Verification failed: " + err.message });
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await userRepository.update(user.id, {
     password: passwordHash,
-    otpCode: null,
-    otpExpiresAt: null,
   });
 
   return res.json({ success: true });
@@ -426,18 +383,13 @@ router.post("/otp/send", authRequired, async (req, res) => {
     return res.status(401).json({ error: "Current password is incorrect" });
   }
 
-  const otpCode = `${Math.floor(100000 + Math.random() * 900000)}`;
-  await userRepository.update(user.id, {
-    otpCode,
-    otpExpiresAt: new Date(Date.now() + 1000 * 60 * 10),
-  });
-
-  await sendMail({
-    to: user.email,
-    subject: "Your PortSentinel verification code",
-    text: `Your verification code is ${otpCode}. It expires in 10 minutes.`,
-    html: `<p>Your verification code is <strong>${otpCode}</strong>.</p><p>It expires in 10 minutes.</p>`,
-  });
+  try {
+    const supabaseClient = getSupabase();
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(user.email);
+    if (error) throw error;
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to send verification code: " + err.message });
+  }
 
   return res.json({ success: true, email: user.email });
 });
@@ -457,19 +409,24 @@ router.post("/change-password", authRequired, async (req, res) => {
     return res.status(404).json({ error: "User not found" });
   }
 
-  if (!user.otpCode || !user.otpExpiresAt || user.otpExpiresAt.getTime() < Date.now()) {
-    return res.status(400).json({ error: "Verification code expired. Request a new one." });
-  }
+  try {
+    const supabaseClient = getSupabase();
+    const { error } = await supabaseClient.auth.verifyOtp({
+      email: user.email,
+      token: String(otpCode).trim(),
+      type: "recovery",
+    });
 
-  if (String(otpCode).trim() != String(user.otpCode).trim()) {
-    return res.status(400).json({ error: "Invalid verification code" });
+    if (error) {
+      return res.status(400).json({ error: "Invalid or expired verification code: " + error.message });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: "Verification failed: " + err.message });
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await userRepository.update(user.id, {
     password: passwordHash,
-    otpCode: null,
-    otpExpiresAt: null,
   });
 
   return res.json({ success: true });
