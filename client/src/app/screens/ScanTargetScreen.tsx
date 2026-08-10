@@ -116,8 +116,19 @@ export function ScanTargetScreen() {
       .finally(() => setLoadingRecent(false));
   }, [token]);
 
+  const [enableCredScan, setEnableCredScan] = useState(false);
+  const [sshUser, setSshUser] = useState("ubuntu");
+  const [sshPassword, setSshPassword] = useState("");
+  const [sshKey, setSshKey] = useState("");
+  const [enableWeakCredsCheck, setEnableWeakCredsCheck] = useState(false);
+  const [consentChecked, setConsentChecked] = useState(false);
+
   const handleScan = () => {
     if (!target.trim()) return;
+    if (enableCredScan && !consentChecked) {
+      alert("You must explicitly confirm authorization consent to run credentialed checks.");
+      return;
+    }
     const isPrivate = isPrivateTarget(target);
     navigate("/app/scan/progress", {
       state: {
@@ -125,6 +136,13 @@ export function ScanTargetScreen() {
         scanType,
         portRange,
         agentId: isPrivate ? selectedAgentId : undefined,
+        enableCredentialedScan: enableCredScan,
+        credentials: enableCredScan
+          ? {
+              ssh: { username: sshUser, password: sshPassword, privateKey: sshKey, port: 22 },
+              enableWeakCredsCheck,
+            }
+          : undefined,
       },
     });
   };
@@ -266,6 +284,93 @@ export function ScanTargetScreen() {
           <input value={portRange} onChange={(e) => setPortRange(e.target.value)} placeholder="e.g. 1-1000 or 80,443,8080" style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(28,50,84,0.8)", borderRadius: "14px", color: "#c8d8f0", fontSize: "13px", fontFamily: "JetBrains Mono, monospace", padding: "12px 16px", width: "100%", outline: "none" }} />
         </motion.div>
       )}
+
+      {/* Credentialed Scanning (Optional Deep Mode) */}
+      <div className="px-5 mb-5">
+        <div className="p-4 rounded-2xl flex flex-col gap-3" style={{ background: "rgba(10,20,40,0.7)", border: "1px solid rgba(28,50,84,0.8)" }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p style={{ fontSize: "12px", fontWeight: 600, color: "#e8f4ff", fontFamily: "Inter" }}>
+                Credentialed (Authenticated) Audit
+              </p>
+              <p style={{ fontSize: "10px", color: "#4a6080", fontFamily: "Inter" }}>
+                Perform internal SSH configuration checks (sshd_config, root login, file permissions)
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={enableCredScan}
+              onChange={(e) => setEnableCredScan(e.target.checked)}
+              style={{ width: "18px", height: "18px", accentColor: "#38bdf8", cursor: "pointer" }}
+            />
+          </div>
+
+          {enableCredScan && (
+            <div className="flex flex-col gap-3 pt-2" style={{ borderTop: "1px solid rgba(28,50,84,0.6)" }}>
+              {/* Safety Consent Warning */}
+              <div className="p-3 rounded-xl flex items-start gap-2.5" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)" }}>
+                <AlertTriangle size={16} style={{ color: "#f59e0b", flexShrink: 0, marginTop: "2px" }} />
+                <div>
+                  <p style={{ fontSize: "11px", fontWeight: 700, color: "#f59e0b", fontFamily: "Inter" }}>
+                    AUTHORIZATION CONSENT WARNING
+                  </p>
+                  <p style={{ fontSize: "10px", color: "#d1d5db", fontFamily: "Inter", lineHeight: 1.4, marginTop: "2px" }}>
+                    Credentialed scanning logs directly into the target system using SSH. You must only perform authenticated checks on systems you own or have explicit written authorization to assess.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="consentCheck"
+                  checked={consentChecked}
+                  onChange={(e) => setConsentChecked(e.target.checked)}
+                  style={{ width: "16px", height: "16px", accentColor: "#f59e0b", cursor: "pointer" }}
+                />
+                <label htmlFor="consentCheck" style={{ fontSize: "11px", color: "#e2e8f0", fontFamily: "Inter", fontWeight: 600, cursor: "pointer" }}>
+                  I confirm I own or have written authorization for credentialed testing on this target.
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div>
+                  <label style={{ fontSize: "10px", color: "#4a6080", fontFamily: "Inter" }}>SSH Username</label>
+                  <input
+                    value={sshUser}
+                    onChange={(e) => setSshUser(e.target.value)}
+                    placeholder="ubuntu"
+                    style={{ width: "100%", background: "rgba(7,13,30,0.9)", border: "1px solid rgba(28,50,84,0.8)", borderRadius: "10px", color: "#c8d8f0", padding: "8px 10px", fontSize: "12px", fontFamily: "JetBrains Mono, monospace" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "10px", color: "#4a6080", fontFamily: "Inter" }}>SSH Password</label>
+                  <input
+                    type="password"
+                    value={sshPassword}
+                    onChange={(e) => setSshPassword(e.target.value)}
+                    placeholder="Password"
+                    style={{ width: "100%", background: "rgba(7,13,30,0.9)", border: "1px solid rgba(28,50,84,0.8)", borderRadius: "10px", color: "#c8d8f0", padding: "8px 10px", fontSize: "12px", fontFamily: "JetBrains Mono, monospace" }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="checkbox"
+                  id="weakCredsCheck"
+                  checked={enableWeakCredsCheck}
+                  onChange={(e) => setEnableWeakCredsCheck(e.target.checked)}
+                  style={{ width: "15px", height: "15px", accentColor: "#ef4444", cursor: "pointer" }}
+                />
+                <label htmlFor="weakCredsCheck" style={{ fontSize: "10px", color: "#94a3b8", fontFamily: "Inter", cursor: "pointer" }}>
+                  Enable intrusive weak credential test (top default pairs: admin/admin, root/root)
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="px-5 mb-5">
         <button

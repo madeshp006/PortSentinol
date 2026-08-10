@@ -2,6 +2,7 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import { grabBanner } from "./bannerGrabber.js";
 import { processFindingsWithEpss } from "./cveEpssScorer.js";
+import { runCredentialedSshChecks } from "./credentialedScanner.js";
 
 const COMMON_PORTS = [
   21, 22, 23, 25, 53, 80, 110, 139, 143, 443, 445, 993, 995, 1433, 1521, 3306, 3389, 5432, 5900, 6379, 8080, 8443,
@@ -215,7 +216,7 @@ async function scanPortsWithConcurrency({ host, ports, concurrency = 64, onProgr
   return openPorts.sort((a, b) => a.port - b.port);
 }
 
-async function runLocalTcpScan({ target, scanType, portRange, onProgress }) {
+async function runLocalTcpScan({ target, scanType, portRange, onProgress, options = {}, credentials = null }) {
   const normalizedType = normalizeScanType(scanType);
   const portsToScan = parsePortRange(normalizedType, portRange);
   const startedAt = Date.now();
@@ -245,6 +246,29 @@ async function runLocalTcpScan({ target, scanType, portRange, onProgress }) {
 
   const openPorts = await processFindingsWithEpss(rawOpenPorts, target);
 
+  let credentialedFindings = [];
+  const creds = credentials || options.credentials;
+  const isCredScanEnabled = options.enableCredentialedScan || !!creds;
+
+  if (isCredScanEnabled && creds) {
+    if (onProgress) {
+      await onProgress({ progress: 88, stage: "analysis", msg: "Executing authenticated SSH credentialed checks..." });
+    }
+    const sshPortObj = openPorts.find((p) => Number(p.port) === 22 || p.service === "ssh");
+    const targetSshPort = sshPortObj ? Number(sshPortObj.port) : 22;
+
+    try {
+      credentialedFindings = await runCredentialedSshChecks({
+        host,
+        port: targetSshPort,
+        credentials: creds,
+        options,
+      });
+    } catch (err) {
+      console.warn("[internalScanner] Credentialed scan failed:", err.message);
+    }
+  }
+
   if (onProgress) {
     await onProgress({ progress: 92, stage: "analysis", msg: "Analyzing exposed services and generating findings" });
   }
@@ -262,9 +286,10 @@ async function runLocalTcpScan({ target, scanType, portRange, onProgress }) {
     totalPorts: portsToScan.length,
     openPorts: openPorts.length,
     servicesDetected: new Set(openPorts.map((port) => port.service)).size,
-    misconfigurations: 0,
+    misconfigurations: credentialedFindings.length,
     ports: openPorts,
     misconfigs: [],
+    credentialedFindings,
     workerMode: "local",
   };
 }

@@ -97,19 +97,36 @@ export function computeRiskScore(ports = [], misconfigs = []) {
 export function summarizeScan(result = {}) {
   const ports = Array.isArray(result.ports) ? result.ports : [];
   const misconfigs = deriveMisconfigs(ports, result.misconfigs, result.target || "");
-  const findings = deriveFindings(ports, misconfigs);
+  const baseFindings = deriveFindings(ports, misconfigs);
+
+  // Extract explicit credentialed findings
+  const incomingCredFindings = Array.isArray(result.credentialedFindings) ? result.credentialedFindings : [];
+  const extraCredFindings = Array.isArray(result.findings)
+    ? result.findings.filter((f) => f.checkType === "credentialed_check" || f.source === "authenticated_ssh")
+    : [];
+
+  const credentialedFindings = [...incomingCredFindings, ...extraCredFindings];
+  const externalFindings = baseFindings.filter((f) => f.checkType !== "credentialed_check");
+  const allFindings = [...externalFindings, ...credentialedFindings];
+
   const uniqueServices = new Set(ports.map((port) => String(port.service || "unknown").toLowerCase())).size;
-  const riskScore = Number.isFinite(Number(result.riskScore)) ? Number(result.riskScore) : computeRiskScore(ports, misconfigs);
+
+  // Penalize risk score for credentialed misconfigurations
+  const credPenalties = credentialedFindings.reduce((sum, f) => sum + scorePenaltyForRisk(f.severity), 0);
+  const baseRiskScore = Number.isFinite(Number(result.riskScore)) ? Number(result.riskScore) : computeRiskScore(ports, misconfigs);
+  const riskScore = Math.max(12, baseRiskScore - credPenalties);
 
   return {
     duration: result.duration || "1m 58s",
     riskScore,
     openPorts: Number.isFinite(Number(result.openPorts)) ? Number(result.openPorts) : ports.length,
     servicesDetected: Number.isFinite(Number(result.servicesDetected)) ? Number(result.servicesDetected) : uniqueServices,
-    misconfigurations: Number.isFinite(Number(result.misconfigurations)) ? Number(result.misconfigurations) : misconfigs.length,
+    misconfigurations: Number.isFinite(Number(result.misconfigurations)) ? Number(result.misconfigurations) : (misconfigs.length + credentialedFindings.length),
     totalPorts: Number.isFinite(Number(result.totalPorts)) ? Number(result.totalPorts) : ports.length,
     ports,
     misconfigs,
-    findings,
+    findings: allFindings,
+    externalFindings,
+    credentialedFindings,
   };
 }
