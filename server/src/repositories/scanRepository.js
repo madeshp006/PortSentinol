@@ -29,6 +29,26 @@ export const scanRepository = {
     });
   },
 
+  async findPreviousScanByTarget(target, userId = null, excludeScanId = null) {
+    const where = {
+      target,
+      status: "completed",
+    };
+    if (userId) {
+      where.userId = userId;
+    }
+    if (excludeScanId) {
+      where.id = { not: excludeScanId };
+    }
+    return prisma.scanResult.findFirst({
+      where,
+      orderBy: [
+        { requestedAt: "desc" },
+        { createdAt: "desc" },
+      ],
+    });
+  },
+
   async update(id, data) {
     return prisma.scanResult.update({
       where: { id },

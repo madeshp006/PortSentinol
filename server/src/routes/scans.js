@@ -56,6 +56,38 @@ router.get("/:id", requireUser, async (req, res) => {
   }
 });
 
+// GET /api/scans/:id/drift : Surfacing "Changes since last scan"
+router.get("/:id/drift", requireUser, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const scan = await scanRepository.findById(id);
+    if (!scan) {
+      return res.status(404).json({ error: "Scan not found" });
+    }
+    if (req.user.role === "USER" && scan.userId !== req.user.id) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    let driftEvents = [];
+    if (scan.driftEvents) {
+      driftEvents = typeof scan.driftEvents === "string"
+        ? JSON.parse(scan.driftEvents)
+        : (Array.isArray(scan.driftEvents) ? scan.driftEvents : []);
+    }
+
+    return res.json({
+      scanId: scan.id,
+      target: scan.target,
+      requestedAt: scan.requestedAt,
+      finishedAt: scan.finishedAt,
+      totalDriftEvents: driftEvents.length,
+      driftEvents,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/scans : Save scan result directly (usually for offline imports)
 router.post("/", requireUser, async (req, res) => {
   const payload = req.body || {};

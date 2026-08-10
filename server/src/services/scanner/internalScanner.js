@@ -1,6 +1,7 @@
 import dns from "node:dns/promises";
 import net from "node:net";
 import { grabBanner } from "./bannerGrabber.js";
+import { processFindingsWithEpss } from "./cveEpssScorer.js";
 
 const COMMON_PORTS = [
   21, 22, 23, 25, 53, 80, 110, 139, 143, 443, 445, 993, 995, 1433, 1521, 3306, 3389, 5432, 5900, 6379, 8080, 8443,
@@ -235,12 +236,14 @@ async function runLocalTcpScan({ target, scanType, portRange, onProgress }) {
     await onProgress({ progress: 18, stage: "discovery", msg: `Preparing TCP checks for ${portsToScan.length} ports` });
   }
 
-  const openPorts = await scanPortsWithConcurrency({
+  const rawOpenPorts = await scanPortsWithConcurrency({
     host,
     ports: portsToScan,
     concurrency: normalizedType === "deep" ? 96 : 48,
     onProgress,
   });
+
+  const openPorts = await processFindingsWithEpss(rawOpenPorts, target);
 
   if (onProgress) {
     await onProgress({ progress: 92, stage: "analysis", msg: "Analyzing exposed services and generating findings" });

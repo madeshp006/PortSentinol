@@ -1,0 +1,102 @@
+{
+  "cve:openssh:7.2p2": {
+    "data": [
+      {
+        "id": "CVE-2016-3115",
+        "summary": "Multiple CRLF injection vulnerabilities in session.c in sshd in OpenSSH before 7.2p2 allow remote authenticated users to bypass intended shell-command restrictions via crafted X11 forwarding data, related to the (1) do_authenticated1 and (2) session_x11_req functions.",
+        "cvss": 6.4,
+        "published": "2016-03-22"
+      },
+      {
+        "id": "CVE-2015-8325",
+        "summary": "The do_setup_env function in session.c in sshd in OpenSSH through 7.2p2, when the UseLogin feature is enabled and PAM is configured to read .pam_environment files in user home directories, allows local users to gain privileges by triggering a crafted environment for the /bin/login program, as demons",
+        "cvss": 7.8,
+        "published": "2016-05-01"
+      }
+    ],
+    "savedAt": 1786341809395,
+    "expiresAt": 1786946609395
+  },
+  "cve:vsftpd:2.3.4": {
+    "data": [
+      {
+        "id": "CVE-2011-2523",
+        "summary": "vsftpd 2.3.4 downloaded between 20110630 and 20110703 contains a backdoor which opens a shell on port 6200/tcp.",
+        "cvss": 9.8,
+        "published": "2019-11-27"
+      }
+    ],
+    "savedAt": 1786341810412,
+    "expiresAt": 1786946610412
+  },
+  "epss:CVE-2011-2523": {
+    "data": 0.96184,
+    "savedAt": 1786341945495,
+    "expiresAt": 1786428345495
+  },
+  "epss:CVE-2016-3115": {
+    "data": 0.37016,
+    "savedAt": 1786341946512,
+    "expiresAt": 1786428346512
+  },
+  "epss:CVE-2015-8325": {
+    "data": 0.00602,
+    "savedAt": 1786341946514,
+    "expiresAt": 1786428346514
+  },
+  "cve:openssh:6.6.1p1": {
+    "data": [],
+    "savedAt": 1786342205787,
+    "expiresAt": 1786947005787
+  },
+  "cve:apache:2.4.7": {
+    "data": [
+      {
+        "id": "CVE-2012-2378",
+        "summary": "Apache CXF 2.4.5 through 2.4.7, 2.5.1 through 2.5.3, and 2.6.x before 2.6.1, does not properly enforce child policies of a WS-SecurityPolicy 1.1 SupportingToken policy on the client side, which allows remote attackers to bypass the (1) AlgorithmSuite, (2) SignedParts, (3) SignedElements, (4) Encrypt",
+        "cvss": 4.3,
+        "published": "2013-01-05"
+      },
+      {
+        "id": "CVE-2016-6814",
+        "summary": "When an application with unsupported Codehaus versions of Groovy from 1.7.0 to 2.4.3, Apache Groovy 2.4.4 to 2.4.7 on classpath uses standard Java serialization mechanisms, e.g. to communicate between servers or to store local data, it was possible for an attacker to bake a special serialized object",
+        "cvss": 9.8,
+        "published": "2018-01-18"
+      },
+      {
+        "id": "CVE-2021-44224",
+        "summary": "A crafted URI sent to httpd configured as a forward proxy (ProxyRequests on) can cause a crash (NULL pointer dereference) or, for configurations mixing forward and reverse proxy declarations, can allow for requests to be directed to a declared Unix Domain Socket endpoint (Server Side Request Forgery",
+        "cvss": 8.2,
+        "published": "2021-12-20"
+      },
+      {
+        "id": "CVE-2025-66200",
+        "summary": "mod_userdir+suexec bypass via AllowOverride FileInfo vulnerability in Apache HTTP Server. Users with access to use the RequestHeader directive in htaccess can cause some CGI scripts to run under an unexpected userid.\n\nThis issue affects Apache HTTP Server: from 2.4.7 through 2.4.65.\n\nUsers are recom",
+        "cvss": 5.4,
+        "published": "2025-12-05"
+      }
+    ],
+    "savedAt": 1786342205800,
+    "expiresAt": 1786947005800
+  },
+  "epss:CVE-2025-66200": {
+    "data": 0.00636,
+    "savedAt": 1786342207085,
+    "expiresAt": 1786428607085
+  },
+  "epss:CVE-2021-44224": {
+    "data": 0.82295,
+    "savedAt": 1786342207087,
+    "expiresAt": 1786428607087
+  },
+  "epss:CVE-2016-6814": {
+    "data": 0.17239,
+    "savedAt": 1786342207088,
+    "expiresAt": 1786428607088
+  },
+  "epss:CVE-2012-2378": {
+    "data": 0.03926,
+    "savedAt": 1786342207091,
+    "expiresAt": 1786428607091
+  }
+}

@@ -3,6 +3,8 @@ import { alertRepository } from "../repositories/alertRepository.js";
 import { logAudit } from "../services/audit.js";
 import { summarizeScan } from "../services/scanner/findings.js";
 import { runInternalScannerJob } from "../services/scanner/internalScanner.js";
+import { detectDrift } from "../services/scanner/driftDetector.js";
+import { dispatchDriftAlerts } from "../services/scanner/alertDispatcher.js";
 import { emitToUser } from "../services/socketManager.js";
 
 const queue = [];
@@ -89,6 +91,10 @@ async function runScan(scanId) {
     const summary = summarizeScan({ ...rawResult, target: scan.target });
     const savedAt = new Date();
 
+    // Fetch previous scan for the same target to detect state drift
+    const previousScan = await scanRepository.findPreviousScanByTarget(scan.target, scan.userId, scanId);
+    const driftEvents = detectDrift({ ...summary, target: scan.target }, previousScan);
+
     await scanRepository.update(scanId, {
       ...summary,
       scanType: displayScanType(rawResult.scanType || scan.scanType),
@@ -100,10 +106,17 @@ async function runScan(scanId) {
       timestamp: savedAt,
       currentStage: "completed",
       errorMessage: "",
+      driftEvents,
     });
-    await appendTimeline(scanId, "Scan complete. Report saved to history.", "success");
+    await appendTimeline(scanId, `Scan complete. Report saved to history (${driftEvents.length} drift events detected).`, "success");
 
     const latest = await scanRepository.findById(scanId);
+    // Dispatch alerts for urgent or high drift events via pluggable providers (System Alert, Webhook, Email)
+    if (latest && driftEvents.length > 0) {
+      await dispatchDriftAlerts(latest, driftEvents).catch((e) =>
+        console.warn("[scanQueue] Alert dispatch error:", e.message)
+      );
+    }
     if (latest) {
       let misconfigs = [];
       if (latest.misconfigs) {

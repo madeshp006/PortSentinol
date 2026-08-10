@@ -85,6 +85,7 @@ model ScanResult {
   errorMessage      String    @default("")
   cancelRequested   Boolean   @default(false)
   timeline          Json      @default("[]")
+  driftEvents       Json      @default("[]")
   requestedAt       DateTime  @default(now())
   startedAt         DateTime?
   finishedAt        DateTime?

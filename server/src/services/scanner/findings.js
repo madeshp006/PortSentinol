@@ -61,12 +61,15 @@ export function deriveFindings(ports = [], misconfigs = []) {
       title: `${String(port.product && port.product !== "Unknown" ? port.product : port.service || "Service").toUpperCase()} exposed on ${port.port}/${String(port.protocol || "tcp")}`,
       severity: risk,
       description: port.description || `${port.service || "Service"} was detected as open.`,
-      recommendation: defaultMitigationForPort(Number(port.port || 0), port.service),
+      recommendation: port.mitigation || defaultMitigationForPort(Number(port.port || 0), port.service),
       port: Number(port.port || 0),
       service: port.service || "service",
       product: port.product || "Unknown",
       version: port.version || "Unknown",
       confidence: port.confidence || "inferred",
+      cveStatus: port.cveStatus || "no_version",
+      cve: Array.isArray(port.cve) ? port.cve : [],
+      riskDetails: port.riskDetails || null,
     });
   }
 
