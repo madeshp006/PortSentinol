@@ -103,7 +103,7 @@ export function MisconfigScreen() {
       ) : (
         <div className="px-5 flex flex-col gap-4">
           {grouped.map(({ risk, items }) => {
-            const color = riskColor[risk as RiskLevel];
+            const color = riskColor[risk as RiskLevel] || "#f59e0b";
             return (
               <div key={risk}>
                 <div className="flex items-center gap-2 mb-2">

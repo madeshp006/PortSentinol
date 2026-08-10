@@ -141,7 +141,8 @@ export function MitigationScreen() {
       ) : (
         <div className="px-5 flex flex-col gap-3">
           {sortedMisconfigs.map((m: any, i: number) => {
-            const color = riskColor[m.risk as RiskLevel];
+            const riskKey = String(m.risk || "medium").toLowerCase();
+            const color = riskColor[riskKey as RiskLevel] || "#f59e0b";
             const isResolved = resolved.has(m.id);
             return (
               <motion.div key={m.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-2xl overflow-hidden" style={{ border: isResolved ? "1px solid rgba(34,197,94,0.25)" : `1px solid rgba(28,50,84,0.7)`, background: isResolved ? "rgba(34,197,94,0.04)" : "rgba(10,20,40,0.7)", opacity: isResolved ? 0.75 : 1, transition: "all 0.3s" }}>

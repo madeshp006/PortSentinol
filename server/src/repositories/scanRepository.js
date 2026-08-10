@@ -1,15 +1,64 @@
 import { prisma } from "../config/db.js";
 
+const ALLOWED_SCAN_RESULT_FIELDS = new Set([
+  "id",
+  "userId",
+  "target",
+  "scanType",
+  "portRange",
+  "duration",
+  "riskScore",
+  "openPorts",
+  "servicesDetected",
+  "misconfigurations",
+  "totalPorts",
+  "ports",
+  "misconfigs",
+  "findings",
+  "status",
+  "progress",
+  "currentStage",
+  "scopeStatus",
+  "workerMode",
+  "errorMessage",
+  "cancelRequested",
+  "timeline",
+  "driftEvents",
+  "requestedAt",
+  "startedAt",
+  "finishedAt",
+  "savedAt",
+  "timestamp",
+  "agentId",
+  "scanJobId",
+  "createdAt",
+  "updatedAt",
+  "user",
+  "scanJob",
+]);
+
+function sanitizeScanData(data) {
+  if (!data || typeof data !== "object") return data;
+  const sanitized = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (ALLOWED_SCAN_RESULT_FIELDS.has(key)) {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 export const scanRepository = {
   async create(data) {
+    const raw = {
+      ...data,
+      ports: data.ports ? data.ports : [],
+      misconfigs: data.misconfigs ? data.misconfigs : [],
+      findings: data.findings ? data.findings : [],
+      timeline: data.timeline ? data.timeline : [],
+    };
     return prisma.scanResult.create({
-      data: {
-        ...data,
-        ports: data.ports ? data.ports : [],
-        misconfigs: data.misconfigs ? data.misconfigs : [],
-        findings: data.findings ? data.findings : [],
-        timeline: data.timeline ? data.timeline : [],
-      },
+      data: sanitizeScanData(raw),
     });
   },
 
@@ -52,7 +101,7 @@ export const scanRepository = {
   async update(id, data) {
     return prisma.scanResult.update({
       where: { id },
-      data,
+      data: sanitizeScanData(data),
     });
   },
 
@@ -73,10 +122,10 @@ export const scanRepository = {
 
     return prisma.scanResult.update({
       where: { id },
-      data: {
+      data: sanitizeScanData({
         timeline,
         ...extra,
-      },
+      }),
     });
   },
 

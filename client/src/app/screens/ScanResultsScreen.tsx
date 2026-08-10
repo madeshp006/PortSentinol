@@ -39,6 +39,7 @@ export function ScanResultsScreen() {
   const [historyData, setHistoryData] = useState<any[]>([]);
 
   useEffect(() => {
+    const passedScan = hydrateScan((location.state as any)?.scan);
     if (passedScan) {
       setScan(passedScan);
       rememberCurrentScan(passedScan);
@@ -70,7 +71,7 @@ export function ScanResultsScreen() {
         .catch((e) => console.log("Load recent scan error:", e.message))
         .finally(() => setLoading(false));
     }
-  }, [token, passedScan]);
+  }, [token, location.state]);
 
   // Load target scan history for line chart visualization (Stage 3)
   useEffect(() => {
@@ -359,7 +360,7 @@ export function ScanResultsScreen() {
                 <motion.button
                   key={f.code || f.title}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => navigate(`/app/scan/results/ports/${f.port || 0}`, { state: { scan } })}
+                  onClick={() => navigate(`/app/scan/results/ports/${encodeURIComponent(f.code || f.port || 0)}`, { state: { scan } })}
                   className="p-4 rounded-2xl text-left w-full flex flex-col gap-2"
                   style={{ background: "rgba(10,20,40,0.7)", border: "1px solid rgba(28,50,84,0.6)" }}
                 >

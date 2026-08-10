@@ -63,31 +63,58 @@ export function ServiceDetailsScreen() {
     const ports = scan?.ports ?? [];
     const allFindings = scan?.findings ?? [];
     
-    // Find matching port or finding object
-    const matchPort = ports.find((p: any) => p.id === id || String(p.number || p.port) === id);
-    const matchFinding = allFindings.find((f: any) => f.code === id || String(f.port) === id);
-
-    if (matchPort) return matchPort;
+    // Check if id matches a finding code first
+    const matchFinding = allFindings.find((f: any) => f.code === id);
     if (matchFinding) {
       return {
         id: matchFinding.code,
-        number: matchFinding.port,
-        port: matchFinding.port,
+        number: matchFinding.port || 0,
+        port: matchFinding.port || 0,
         service: matchFinding.service || matchFinding.product || "service",
         protocol: "tcp",
         state: "open",
-        product: matchFinding.product,
-        version: matchFinding.version,
-        risk: matchFinding.severity || "medium",
-        cve: matchFinding.cve,
+        product: matchFinding.product || "Unknown",
+        version: matchFinding.version || "Unknown",
+        risk: matchFinding.severity || matchFinding.risk || "medium",
+        cve: matchFinding.cve || [],
         cveStatus: matchFinding.cveStatus,
         riskDetails: matchFinding.riskDetails,
-        mitigation: matchFinding.recommendation,
+        mitigation: matchFinding.recommendation || matchFinding.mitigation,
         checkType: matchFinding.checkType,
         source: matchFinding.source,
         description: matchFinding.description,
+        banner: matchFinding.banner || "",
       };
     }
+
+    // Check matching port object
+    const matchPort = ports.find((p: any) => p.id === id || String(p.number ?? p.port ?? "") === String(id));
+    if (matchPort) return matchPort;
+
+    // Fallback: match finding by port number string
+    const matchFindingByPort = allFindings.find((f: any) => String(f.port) === String(id));
+    if (matchFindingByPort) {
+      return {
+        id: matchFindingByPort.code,
+        number: matchFindingByPort.port || 0,
+        port: matchFindingByPort.port || 0,
+        service: matchFindingByPort.service || matchFindingByPort.product || "service",
+        protocol: "tcp",
+        state: "open",
+        product: matchFindingByPort.product || "Unknown",
+        version: matchFindingByPort.version || "Unknown",
+        risk: matchFindingByPort.severity || matchFindingByPort.risk || "medium",
+        cve: matchFindingByPort.cve || [],
+        cveStatus: matchFindingByPort.cveStatus,
+        riskDetails: matchFindingByPort.riskDetails,
+        mitigation: matchFindingByPort.recommendation || matchFindingByPort.mitigation,
+        checkType: matchFindingByPort.checkType,
+        source: matchFindingByPort.source,
+        description: matchFindingByPort.description,
+        banner: matchFindingByPort.banner || "",
+      };
+    }
+
     return null;
   }, [scan, id]);
 
