@@ -347,7 +347,54 @@ export function generatePdfReport(scan, res) {
          .text(f.recommendation || f.fix || "Restrict external access and verify system logs.", { width: doc.page.width - 120 });
 
       const recHeight = doc.heightOfString(f.recommendation || f.fix || "Restrict external access", { width: doc.page.width - 120 });
-      recY += recHeight + 20;
+      recY += recHeight + 15;
+    });
+  }
+
+  // ─── PAGE 4: CHANGES SINCE LAST SCAN & CREDENTIALED AUDIT ─────────────────
+  let driftEvents = [];
+  try {
+    driftEvents = typeof scan.driftEvents === "string" ? JSON.parse(scan.driftEvents) : (Array.isArray(scan.driftEvents) ? scan.driftEvents : []);
+  } catch {
+    driftEvents = [];
+  }
+
+  if (driftEvents.length > 0) {
+    doc.addPage();
+    doc.rect(0, 0, doc.page.width, doc.page.height).fill(colors.backgroundDark);
+
+    doc.fillColor(colors.primary)
+       .fontSize(14)
+       .font("Helvetica-Bold")
+       .text("SECURITY DRIFT ANALYSIS (CHANGES SINCE LAST SCAN)", 50, 50);
+
+    let driftY = 80;
+    driftEvents.forEach((d) => {
+      if (driftY > doc.page.height - 80) {
+        doc.addPage();
+        doc.rect(0, 0, doc.page.width, doc.page.height).fill(colors.backgroundDark);
+        driftY = 50;
+      }
+
+      const pColor = d.priority === "urgent" ? colors.critical : d.priority === "high" ? colors.high : colors.primary;
+
+      doc.rect(50, driftY, doc.page.width - 100, 18).fill(colors.tableHeader);
+      doc.fillColor(pColor)
+         .fontSize(8)
+         .font("Helvetica-Bold")
+         .text(`[${String(d.priority).toUpperCase()}] ${d.eventType}`, 60, driftY + 4, { continued: true })
+         .fillColor(colors.textLight)
+         .text(` — Port ${d.port}`);
+
+      driftY += 22;
+
+      doc.fillColor(colors.textLight)
+         .fontSize(9)
+         .font("Helvetica")
+         .text(d.explanation, 60, driftY, { width: doc.page.width - 120 });
+
+      const expHeight = doc.heightOfString(d.explanation, { width: doc.page.width - 120 });
+      driftY += expHeight + 12;
     });
   }
 
