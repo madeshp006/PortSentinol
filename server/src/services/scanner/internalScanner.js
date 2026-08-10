@@ -1,5 +1,6 @@
 import dns from "node:dns/promises";
 import net from "node:net";
+import { grabBanner } from "./bannerGrabber.js";
 
 const COMMON_PORTS = [
   21, 22, 23, 25, 53, 80, 110, 139, 143, 443, 445, 993, 995, 1433, 1521, 3306, 3389, 5432, 5900, 6379, 8080, 8443,
@@ -127,12 +128,16 @@ function guessRisk(port) {
   return RISK_BY_PORT[port] || "low";
 }
 
-function portDescription(port, service) {
+function portDescription(port, service, product = "", version = "") {
   const risk = guessRisk(port);
-  if (risk === "critical") return `${service} is reachable and should be removed or isolated immediately.`;
-  if (risk === "high") return `${service} is reachable on a sensitive port. Restrict access and verify necessity.`;
-  if (risk === "medium") return `${service} is reachable. Review exposure and hardening controls.`;
-  return `${service} is reachable. Confirm this exposure matches your intended configuration.`;
+  const infoStr = product && product !== "Unknown"
+    ? `${product}${version && version !== "Unknown" ? ` ${version}` : ""}`
+    : service;
+
+  if (risk === "critical") return `${infoStr} is reachable on port ${port} and should be removed or isolated immediately.`;
+  if (risk === "high") return `${infoStr} is reachable on port ${port} (sensitive). Restrict access and verify necessity.`;
+  if (risk === "medium") return `${infoStr} is reachable on port ${port}. Review exposure and hardening controls.`;
+  return `${infoStr} is reachable on port ${port}. Confirm this exposure matches your intended configuration.`;
 }
 
 function scanSingleTcpPort(host, port, timeoutMs = 700) {
@@ -171,15 +176,20 @@ async function scanPortsWithConcurrency({ host, ports, concurrency = 64, onProgr
 
       if (result.open) {
         const service = guessService(port);
+        // Perform active banner grabbing & version detection
+        const bannerInfo = await grabBanner(host, port, service, 1200);
+
         openPorts.push({
           port,
           service,
-          version: "",
+          product: bannerInfo.product,
+          version: bannerInfo.version,
+          confidence: bannerInfo.confidence,
           state: "open",
           protocol: "tcp",
           risk: guessRisk(port),
-          description: portDescription(port, service),
-          banner: "",
+          description: portDescription(port, service, bannerInfo.product, bannerInfo.version),
+          banner: bannerInfo.banner || "",
           cve: [],
         });
       }

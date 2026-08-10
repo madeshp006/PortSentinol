@@ -58,12 +58,15 @@ export function deriveFindings(ports = [], misconfigs = []) {
     if (!["critical", "high", "medium"].includes(risk)) continue;
     findings.push({
       code: `PORT-${port.port}`,
-      title: `${String(port.service || "Service").toUpperCase()} exposed on ${port.port}/${String(port.protocol || "tcp")}`,
+      title: `${String(port.product && port.product !== "Unknown" ? port.product : port.service || "Service").toUpperCase()} exposed on ${port.port}/${String(port.protocol || "tcp")}`,
       severity: risk,
       description: port.description || `${port.service || "Service"} was detected as open.`,
       recommendation: defaultMitigationForPort(Number(port.port || 0), port.service),
       port: Number(port.port || 0),
       service: port.service || "service",
+      product: port.product || "Unknown",
+      version: port.version || "Unknown",
+      confidence: port.confidence || "inferred",
     });
   }
 
