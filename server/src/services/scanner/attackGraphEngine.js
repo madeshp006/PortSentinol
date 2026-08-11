@@ -13,41 +13,71 @@ function calculateNodeSeverity(riskScore = 100) {
 }
 
 /**
- * Stage 1: Builds directed attack graph (nodes, edges, adjacency list) for subnet scans.
+ * Builds directed attack graph (nodes, edges, adjacency list) for subnet scans.
+ * Uses ONLY real scan target data (never fake hardcoded IPs).
  */
 export function buildSubnetAttackGraph(scanData = {}) {
-  const hosts = Array.isArray(scanData.hosts)
-    ? scanData.hosts
-    : (Array.isArray(scanData.ports) && scanData.multiHost ? scanData.multiHost : []);
-
-  const targetStr = String(scanData.target || "").trim();
+  const targetStr = String(scanData.target || "127.0.0.1").trim();
   const isCidrOrSubnet = targetStr.includes("/") || targetStr.includes(",");
 
+  const hosts = Array.isArray(scanData.hosts)
+    ? scanData.hosts
+    : (Array.isArray(scanData.multiHost) ? scanData.multiHost : []);
+
+  // Single Host Scan Target
   if (!isCidrOrSubnet && hosts.length <= 1) {
+    const realPorts = Array.isArray(scanData.ports) ? scanData.ports : [];
+    const realFindings = Array.isArray(scanData.findings) ? scanData.findings : [];
+    const realRiskScore = Number(scanData.riskScore ?? 100);
+    const realServices = [...new Set(realPorts.map((p) => p.service).filter(Boolean))];
+
+    const firstProduct = realPorts.find((p) => p.product && p.product !== "Unknown")?.product;
+    const firstVersion = realPorts.find((p) => p.version && p.version !== "Unknown")?.version;
+    const realOsStr = realPorts.length === 0
+      ? "Clean Host (0 Open Ports)"
+      : firstProduct
+      ? `${firstProduct}${firstVersion ? ` ${firstVersion}` : ""}`
+      : "Server OS / Host";
+
+    const singleNode = {
+      id: targetStr,
+      label: `Host ${targetStr}`,
+      ip: targetStr,
+      os: realOsStr,
+      riskScore: realRiskScore,
+      severity: calculateNodeSeverity(realRiskScore),
+      findingsCount: realFindings.length || realPorts.length,
+      services: realServices,
+    };
+
     return {
       isSubnetScan: false,
-      nodes: [],
+      target: targetStr,
+      totalNodes: 1,
+      totalEdges: 0,
+      nodes: [singleNode],
       edges: [],
-      adjacencyList: {},
+      adjacencyList: { [targetStr]: [] },
     };
   }
 
-  const effectiveHosts = hosts.length > 0 ? hosts : generateSubnetHostsFallback(targetStr, scanData);
-
+  // Multi-Host Subnet Scan
   const nodes = [];
   const edges = [];
   const adjacencyList = {};
 
-  effectiveHosts.forEach((hostObj) => {
+  hosts.forEach((hostObj) => {
     const ip = hostObj.host || hostObj.ip || hostObj.target || "192.168.1.1";
     const portList = Array.isArray(hostObj.ports) ? hostObj.ports : [];
-    const openServices = [...new Set(portList.map((p) => p.service || "unknown"))];
-    const riskScore = Number(hostObj.riskScore ?? scanData.riskScore ?? 65);
+    const openServices = [...new Set(portList.map((p) => p.service).filter(Boolean))];
+    const riskScore = Number(hostObj.riskScore ?? scanData.riskScore ?? 100);
     const severity = calculateNodeSeverity(riskScore);
 
     const firstProduct = portList.find((p) => p.product && p.product !== "Unknown")?.product;
     const firstVersion = portList.find((p) => p.version && p.version !== "Unknown")?.version;
-    const osStr = firstProduct
+    const osStr = portList.length === 0
+      ? "Clean Host (0 Open Ports)"
+      : firstProduct
       ? `${firstProduct}${firstVersion ? ` ${firstVersion}` : ""}`
       : "Linux / Server OS";
 
@@ -71,8 +101,8 @@ export function buildSubnetAttackGraph(scanData = {}) {
 
       const sourceHost = nodes[i];
       const targetHost = nodes[j];
-      const targetPorts = effectiveHosts[j]?.ports || [];
-      const sourceFindings = effectiveHosts[i]?.findings || [];
+      const targetPorts = hosts[j]?.ports || [];
+      const sourceFindings = hosts[i]?.findings || [];
 
       // Check Vector A: Weak SSH Credentials / Key Reuse Pivot (Weight: 0.95)
       const hasSshCredsWeakness = sourceFindings.some(
@@ -165,43 +195,34 @@ export function buildSubnetAttackGraph(scanData = {}) {
 
 /**
  * Stage 2: Simulates lateral attack traversal starting from an initial compromised host.
- * Uses weighted Dijkstra search to compute the highest-risk attack path.
- * 
- * @param {object} graph - Graph object from buildSubnetAttackGraph
- * @param {string} startHostId - IP address of compromised entry node (e.g. "192.168.1.10")
- * @param {string} startVulnerability - Compromise vector (e.g. "FTP Backdoor Exploit")
- * @returns {object} Simulated attack path details with ranked risk score
  */
 export function simulateAttackPath(graph = {}, startHostId = "", startVulnerability = "Initial Perimeter Compromise") {
-  if (!graph.isSubnetScan || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  if (nodes.length === 0) {
     return {
       success: false,
-      message: "Attack path simulation requires a valid multi-host subnet scan graph.",
+      message: "Attack path simulation requires valid target nodes.",
     };
   }
 
-  const startNode = graph.nodes.find((n) => n.id === startHostId || n.ip === startHostId) || graph.nodes[0];
+  const startNode = nodes.find((n) => n.id === startHostId || n.ip === startHostId) || nodes[0];
   const startIp = startNode.ip;
 
-  const nodeMap = new Map(graph.nodes.map((n) => [n.ip, n]));
-  const edgeMap = new Map();
-  graph.edges.forEach((e) => {
-    edgeMap.set(`${e.source}->${e.target}`, e);
-  });
+  const nodeMap = new Map(nodes.map((n) => [n.ip, n]));
+  const edges = Array.isArray(graph.edges) ? graph.edges : [];
 
-  // Dijkstra / BFS Traversal
   const visited = new Set();
   const queue = [{ currentIp: startIp, path: [startIp], totalWeight: 0, hops: [] }];
   const allPaths = [];
 
   while (queue.length > 0) {
-    queue.sort((a, b) => b.totalWeight - a.totalWeight); // Pick highest weight pivot vector
+    queue.sort((a, b) => b.totalWeight - a.totalWeight);
     const { currentIp, path, totalWeight, hops } = queue.shift();
 
     if (visited.has(currentIp) && path.length > 1) continue;
     visited.add(currentIp);
 
-    const neighbors = graph.edges.filter((e) => e.source === currentIp);
+    const neighbors = edges.filter((e) => e.source === currentIp);
     let expanded = false;
 
     for (const edge of neighbors) {
@@ -235,14 +256,12 @@ export function simulateAttackPath(graph = {}, startHostId = "", startVulnerabil
     }
   }
 
-  // Pick top realistic path
   const bestPathObj = allPaths.sort((a, b) => b.totalWeight - a.totalWeight)[0] || {
     path: [startIp],
     totalWeight: 0.1,
     hops: [],
   };
 
-  // Calculate Path Risk Score: (sum weight / hops) * max severity multiplier
   const hopCount = bestPathObj.hops.length;
   const targetNode = nodeMap.get(bestPathObj.path[bestPathObj.path.length - 1]) || startNode;
   
@@ -250,11 +269,13 @@ export function simulateAttackPath(graph = {}, startHostId = "", startVulnerabil
   if (targetNode.severity === "critical") severityMultiplier = 1.8;
   else if (targetNode.severity === "high") severityMultiplier = 1.4;
 
-  const rawPathScore = Math.min(98, Number(((bestPathObj.totalWeight * 25 * severityMultiplier) + (hopCount * 12)).toFixed(1)));
-  const pathSeverity = rawPathScore >= 75 ? "CRITICAL" : rawPathScore >= 50 ? "HIGH" : "MEDIUM";
+  const rawPathScore = hopCount === 0
+    ? Math.round(100 - startNode.riskScore)
+    : Math.min(98, Number(((bestPathObj.totalWeight * 25 * severityMultiplier) + (hopCount * 12)).toFixed(1)));
+  const pathSeverity = rawPathScore >= 75 ? "CRITICAL" : rawPathScore >= 50 ? "HIGH" : "LOW";
 
   const explanation = hopCount === 0
-    ? `Initial entry on ${startIp} (${startVulnerability}). No further lateral movement edges detected.`
+    ? `Target host ${startIp} (${startNode.os}). ${startNode.services.length === 0 ? "0 open ports exposed — host is secure." : `${startNode.services.length} open service port(s) detected.`}`
     : `Attacker gains initial entry on ${startIp} via ${startVulnerability}. From there, the attacker pivots through ${hopCount} hop(s) to reach high-value target ${targetNode.ip} (${targetNode.os}), resulting in network-wide compromise.`;
 
   return {
@@ -269,54 +290,4 @@ export function simulateAttackPath(graph = {}, startHostId = "", startVulnerabil
     pathHops: bestPathObj.hops,
     explanation,
   };
-}
-
-/**
- * Fallback host generator for subnet CIDR targets
- */
-function generateSubnetHostsFallback(targetStr = "", scanData = {}) {
-  const baseIp = targetStr.split("/")[0].replace(/\.\d+$/, "");
-  const rootIp = baseIp || "192.168.1";
-
-  const mainPorts = Array.isArray(scanData.ports) ? scanData.ports : [];
-  const mainFindings = Array.isArray(scanData.findings) ? scanData.findings : [];
-
-  return [
-    {
-      host: `${rootIp}.10`,
-      ports: mainPorts.length > 0 ? mainPorts : [{ port: 22, service: "ssh", product: "OpenSSH", version: "7.2p2", risk: "medium" }],
-      findings: mainFindings,
-      riskScore: scanData.riskScore || 58,
-    },
-    {
-      host: `${rootIp}.20`,
-      ports: [
-        { port: 21, service: "ftp", product: "vsftpd", version: "2.3.4", risk: "critical" },
-        { port: 445, service: "smb", product: "Samba", version: "4.3", risk: "high" },
-      ],
-      findings: [
-        { code: "PORT-21", title: "vsftpd 2.3.4 Backdoor Exposed", severity: "critical" },
-      ],
-      riskScore: 18,
-    },
-    {
-      host: `${rootIp}.30`,
-      ports: [
-        { port: 80, service: "http", product: "Apache", version: "2.4.7", risk: "high" },
-        { port: 3389, service: "rdp", product: "Microsoft RDP", version: "10.0", risk: "critical" },
-      ],
-      findings: [
-        { code: "PORT-3389", title: "RDP Public Exposure", severity: "critical" },
-      ],
-      riskScore: 35,
-    },
-    {
-      host: `${rootIp}.40`,
-      ports: [
-        { port: 443, service: "https", product: "nginx", version: "1.18", risk: "low" },
-      ],
-      findings: [],
-      riskScore: 92,
-    },
-  ];
 }

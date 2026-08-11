@@ -86,8 +86,12 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
     findingsCount: realFindings.length || realPorts.length,
   };
 
-  const rawNodes = Array.isArray(graph?.nodes) && graph.nodes.length > 0 ? graph.nodes : [realNode];
-  const rawEdges = Array.isArray(graph?.edges) ? graph.edges : [];
+  const rawNodes = (Array.isArray(graph?.nodes) && graph.nodes.length > 1)
+    ? graph.nodes
+    : [realNode];
+  const rawEdges = (Array.isArray(graph?.nodes) && graph.nodes.length > 1)
+    ? (Array.isArray(graph?.edges) ? graph.edges : [])
+    : [];
 
   const nodes = useDemoData ? DEMO_SUBNET_NODES : rawNodes;
   const edges = useDemoData ? DEMO_SUBNET_EDGES : rawEdges;
