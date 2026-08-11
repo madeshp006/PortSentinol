@@ -20,10 +20,13 @@ async function request<T>(
   }
 
   const res = await fetch(`${BASE}${path}`, { ...rest, headers });
-  const contentType = res.headers.get("content-type") || "";
-  const data = contentType.includes("application/json")
-    ? await res.json()
-    : await res.text();
+  const text = await res.text();
+  let data: any;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = text;
+  }
 
   if (!res.ok) {
     const message = typeof data === "object" && data && "error" in data
