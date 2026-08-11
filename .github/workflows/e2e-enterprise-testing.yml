@@ -1,0 +1,50 @@
+name: Enterprise QA E2E & Vulnerability Test Pipeline (1,200 Tests)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  enterprise-qa-matrix:
+    name: Run Enterprise E2E Test Suite (1,200 Test Cases)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 2. Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 3. Install Enterprise E2E Framework Dependencies
+        run: |
+          cd e2e-framework
+          npm install
+
+      - name: 4. Execute 1,200 Test Cases (Selenium, Appium, Security, Load)
+        run: |
+          cd e2e-framework
+          npm test
+
+      - name: 5. Upload Excel Report Artifact (E2E_1200_Test_Execution_Report.xlsx)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PortSentinel-1200-E2E-Excel-Report
+          path: e2e-framework/excel/E2E_1200_Test_Execution_Report.xlsx
+          retention-days: 30
+
+      - name: 6. Upload HTML Report & Execution Logs Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PortSentinel-HTML-Report-Logs
+          path: |
+            e2e-framework/reports/
+            e2e-framework/logs/
+          retention-days: 30
