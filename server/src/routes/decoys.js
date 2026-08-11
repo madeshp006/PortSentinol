@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireUser } from "../middleware/authMiddleware.js";
+import { requireUser } from "../middleware/auth.js";
 import {
   startDecoyTrap,
   stopDecoyTrap,
