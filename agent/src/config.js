@@ -8,7 +8,7 @@ const CONFIG_DIR = path.join(os.homedir(), ".portsentinel");
 const CONFIG_FILE = path.join(CONFIG_DIR, "agent.json");
 
 let config = {
-  serverUrl: process.env.PORT_SENTINEL_URL || "http://localhost:5000",
+  serverUrl: process.env.PORT_SENTINEL_URL || "https://portsentinel-backend.onrender.com",
   apiKey: process.env.PORT_SENTINEL_API_KEY || "",
   agentId: "",
   agentKey: "",
