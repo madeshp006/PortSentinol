@@ -215,5 +215,26 @@ export const simulateAttackPath = (token: string, scanId: string, startHostId: s
     body: JSON.stringify({ startHostId, startVulnerability }),
   }, token);
 
+export const getDecoyStatus = (token: string) =>
+  request<any>("/decoys/status", {}, token);
+
+export const startDecoy = (token: string, payload: { type: string; port: number; userConsent: boolean }) =>
+  request<any>("/decoys/start", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+
+export const stopDecoy = (token: string, trapId: string) =>
+  request<any>("/decoys/stop", {
+    method: "POST",
+    body: JSON.stringify({ trapId }),
+  }, token);
+
+export const simulateDecoyProbe = (token: string, payload: { type: string; port: number; sourceIp?: string; attemptedUser?: string; attemptedPass?: string }) =>
+  request<any>("/decoys/simulate-probe", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+
 
 

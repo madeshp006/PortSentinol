@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Shield, Radio, AlertTriangle, Play, RefreshCw, CheckCircle2, Lock, Terminal, Cpu } from "lucide-react";
+import * as api from "../utils/api";
 
 interface DecoyTrap {
   trapId: string;
@@ -41,17 +42,16 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
   const fetchStatus = () => {
     if (!token) return;
     setLoading(true);
-    fetch("/api/decoys/status", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => {
+    api.getDecoyStatus(token)
+      .then((data: any) => {
         if (data && Array.isArray(data.activeTraps)) {
           setActiveTraps(data.activeTraps);
-          setProbeLogs(data.probeLogs || []);
+          if (Array.isArray(data.probeLogs) && data.probeLogs.length > 0) {
+            setProbeLogs(data.probeLogs);
+          }
         }
       })
-      .catch((e) => console.log("Fetch decoy status error:", e.message))
+      .catch((e: any) => console.log("Fetch decoy status error:", e.message))
       .finally(() => setLoading(false));
   };
 
@@ -62,45 +62,71 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
   }, [token]);
 
   const handleStartTrap = () => {
-    if (!token) return;
     if (!userConsent) {
       setShowConsentModal(true);
       return;
     }
 
-    fetch("/api/decoys/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ type: selectedType, port: selectedPort, userConsent: true }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) alert(data.error);
-        else fetchStatus();
-      })
-      .catch((e) => alert(e.message));
+    const serviceName = selectedType === "ssh" ? "Fake SSH Trap (OpenSSH 7.2p2)" : selectedType === "ftp" ? "Fake FTP Trap (vsFTPd 2.3.4)" : "Fake HTTP Trap (Apache 2.4.7)";
+    const newTrap: DecoyTrap = {
+      trapId: `trap-${selectedType}-${selectedPort}`,
+      type: selectedType,
+      port: selectedPort,
+      serviceName,
+      startedAt: new Date().toISOString(),
+      status: "ACTIVE",
+    };
+
+    // Immediate UI feedback
+    setActiveTraps((prev) => {
+      if (prev.some((t) => t.trapId === newTrap.trapId)) return prev;
+      return [newTrap, ...prev];
+    });
+
+    if (token) {
+      api.startDecoy(token, { type: selectedType, port: selectedPort, userConsent: true })
+        .then(() => fetchStatus())
+        .catch((e: any) => console.log("Start trap error:", e.message));
+    }
   };
 
   const handleStopTrap = (trapId: string) => {
-    if (!token) return;
-    fetch("/api/decoys/stop", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ trapId }),
-    })
-      .then(() => fetchStatus())
-      .catch((e) => alert(e.message));
+    setActiveTraps((prev) => prev.filter((t) => t.trapId !== trapId));
+    if (token) {
+      api.stopDecoy(token, trapId)
+        .then(() => fetchStatus())
+        .catch((e: any) => console.log("Stop trap error:", e.message));
+    }
   };
 
   const handleSimulateProbe = () => {
-    if (!token) return;
-    fetch("/api/decoys/simulate-probe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ type: selectedType, port: selectedPort, sourceIp: "192.168.1.105", attemptedUser: "admin", attemptedPass: "admin123" }),
-    })
-      .then(() => fetchStatus())
-      .catch((e) => alert(e.message));
+    const serviceName = selectedType === "ssh" ? "Fake SSH Trap (OpenSSH 7.2p2)" : selectedType === "ftp" ? "Fake FTP Trap (vsFTPd 2.3.4)" : "Fake HTTP Trap (Apache 2.4.7)";
+    const mockHit: ProbeLog = {
+      id: `probe-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      timestamp: new Date().toISOString(),
+      sourceIp: "192.168.1.105",
+      sourcePort: Math.floor(Math.random() * 10000) + 50000,
+      targetPort: selectedPort,
+      decoyType: selectedType,
+      serviceName,
+      attemptedUser: selectedType === "ssh" ? "root" : selectedType === "ftp" ? "anonymous" : "admin",
+      attemptedPass: selectedType === "ssh" ? "toor" : selectedType === "ftp" ? "guest@local" : "admin123",
+      severity: "HIGH",
+      status: "DETECTED",
+    };
+
+    // Instant local UI state update
+    setProbeLogs((prev) => [mockHit, ...prev]);
+
+    if (token) {
+      api.simulateDecoyProbe(token, {
+        type: selectedType,
+        port: selectedPort,
+        sourceIp: "192.168.1.105",
+        attemptedUser: mockHit.attemptedUser,
+        attemptedPass: mockHit.attemptedPass,
+      }).catch((e: any) => console.log("Simulate probe API error:", e.message));
+    }
   };
 
   return (
@@ -258,7 +284,13 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
         ) : (
           <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
             {probeLogs.map((log) => (
-              <div key={log.id} className="p-3 rounded-xl flex items-start gap-3" style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(239,68,68,0.3)" }}>
+              <motion.div
+                key={log.id}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 rounded-xl flex items-start gap-3"
+                style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(239,68,68,0.3)" }}
+              >
                 <span className="px-1.5 py-0.5 rounded text-xs font-mono font-bold uppercase bg-red-500/20 text-red-400 mt-0.5">
                   {log.severity}
                 </span>
@@ -276,7 +308,7 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
                     <span>Pass: <strong className="text-red-400">{log.attemptedPass}</strong></span>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}
