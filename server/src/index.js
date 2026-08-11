@@ -20,6 +20,9 @@ import adminRoutes from "./routes/admin.js";
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
 
+// Enable trust proxy for reverse proxies (Render, Vercel, Cloudflare, etc.)
+app.set("trust proxy", 1);
+
 // Security hardening: Helmet
 app.use(helmet({
   contentSecurityPolicy: false, // Turn off CSP for dev convenience, toggle back if strict
