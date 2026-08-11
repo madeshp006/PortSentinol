@@ -11,6 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import * as api from "../utils/api";
 import { getRememberedScanId, hydrateScan, rememberCurrentScan } from "../utils/scanData";
 import { AttackGraphView } from "../components/AttackGraphView";
+import { DecoyDashboardView } from "../components/DecoyDashboardView";
 
 function getScoreLabel(score: number) {
   if (score >= 80) return { label: "Low Risk", color: "#22c55e" };
@@ -338,6 +339,9 @@ export function ScanResultsScreen() {
         onSimulatePath={handleSimulatePath}
         simulationResult={simulationResult}
       />
+
+      {/* Deception-Based Detection Engine (Decoy & Honeypot Traps) */}
+      <DecoyDashboardView token={token} />
 
       {/* STAGE 4: Tabbed Findings Section (External vs Credentialed) */}
       <div className="px-5 mb-4">

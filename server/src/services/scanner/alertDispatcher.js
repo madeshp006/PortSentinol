@@ -124,3 +124,27 @@ export async function dispatchDriftAlerts(scan = {}, driftEvents = []) {
     }),
   ]);
 }
+
+/**
+ * Dispatcher for Deception Decoy Probe Alerts
+ */
+export async function dispatchDecoyProbeAlert(hitEvent = {}) {
+  if (!hitEvent || !hitEvent.sourceIp) return;
+
+  console.log(`[alertDispatcher] 🚨 DECOY PROBE DETECTED from ${hitEvent.sourceIp} on ${hitEvent.serviceName} (Port ${hitEvent.targetPort})`);
+
+  const title = `🚨 Honeypot Probe Alert: ${hitEvent.sourceIp} on Port ${hitEvent.targetPort}`;
+  const message = `Unauthorized probing attempt trapped on ${hitEvent.serviceName}. Attempted user: "${hitEvent.attemptedUser}".`;
+
+  try {
+    await alertRepository.create({
+      userId: "system",
+      title,
+      message,
+      risk: "critical",
+      metadata: hitEvent,
+    });
+  } catch (e) {
+    console.warn("[alertDispatcher] Decoy alert DB create error:", e.message);
+  }
+}

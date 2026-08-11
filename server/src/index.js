@@ -16,6 +16,7 @@ import agentRoutes from "./routes/agents.js";
 import alertsRoutes from "./routes/alerts.js";
 import schedulesRoutes from "./routes/schedules.js";
 import adminRoutes from "./routes/admin.js";
+import decoyRoutes from "./routes/decoys.js";
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
@@ -84,6 +85,7 @@ app.use("/api/agents", agentRoutes);
 app.use("/api/alerts", alertsRoutes);
 app.use("/api/schedules", schedulesRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/decoys", decoyRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error("Server error:", err.message);
