@@ -335,7 +335,7 @@ export function ScanResultsScreen() {
 
       {/* Subnet Attack Path Graph & Lateral Movement Simulation */}
       <AttackGraphView
-        graph={scan.attackGraph || { target: scan.target, isSubnetScan: scan.target?.includes("/") || scan.target?.includes(",") }}
+        graph={scan.attackGraph && Object.keys(scan.attackGraph).length > 0 ? scan.attackGraph : { target: scan.target, riskScore: scan.riskScore, ports: scan.ports, findings: scan.findings, isSubnetScan: scan.target?.includes("/") || scan.target?.includes(",") }}
         onSimulatePath={handleSimulatePath}
         simulationResult={simulationResult}
       />

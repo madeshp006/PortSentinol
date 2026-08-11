@@ -62,14 +62,18 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
   const [useDemoData, setUseDemoData] = useState(false);
 
   const targetIp = graph?.target || "127.0.0.1";
-  const realScore = Number(graph?.riskScore ?? 65);
+  const realScore = Number(graph?.riskScore ?? 100);
   const realPorts = Array.isArray(graph?.ports) ? graph.ports : [];
   const realFindings = Array.isArray(graph?.findings) ? graph.findings : [];
-  const realServices = [...new Set(realPorts.map((p: any) => p.service || "tcp"))];
+  const realServices = [...new Set(realPorts.map((p: any) => p.service).filter(Boolean))];
 
   const firstProduct = realPorts.find((p: any) => p.product && p.product !== "Unknown")?.product;
   const firstVersion = realPorts.find((p: any) => p.version && p.version !== "Unknown")?.version;
-  const realOsStr = firstProduct ? `${firstProduct}${firstVersion ? ` ${firstVersion}` : ""}` : "Server OS / Linux";
+  const realOsStr = realPorts.length === 0
+    ? "Clean Host (0 Open Ports Exposed)"
+    : firstProduct
+    ? `${firstProduct}${firstVersion ? ` ${firstVersion}` : ""}`
+    : "Server OS / Host";
 
   const realNode: Node = {
     id: targetIp,
@@ -78,7 +82,7 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
     os: realOsStr,
     riskScore: realScore,
     severity: realScore < 40 ? "critical" : realScore < 60 ? "high" : realScore < 80 ? "medium" : "low",
-    services: realServices.length > 0 ? realServices : ["tcp"],
+    services: realServices,
     findingsCount: realFindings.length || realPorts.length,
   };
 
@@ -109,7 +113,6 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
     if (onSimulatePath && !useDemoData && rawNodes.length > 1) {
       onSimulatePath(entryHostId, entryVuln);
     } else {
-      // Local Dijkstra simulation for single target or demo mode
       if (useDemoData) {
         setLocalSimulation({
           success: true,
@@ -124,7 +127,7 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
             { hopIndex: 1, fromHost: "192.168.1.10", toHost: "192.168.1.20", protocol: "ftp", port: 21, weight: 0.90, pivotVulnerability: "Unauthenticated FTP Backdoor Exploit (CVE-2011-2523)", description: "Attacker on 192.168.1.10 exploits vsftpd backdoor on 192.168.1.20." },
             { hopIndex: 2, fromHost: "192.168.1.20", toHost: "192.168.1.30", protocol: "smb", port: 445, weight: 0.80, pivotVulnerability: "SMB Share Lateral Movement", description: "Attacker pivots to 192.168.1.30 via SMB share enumeration." },
           ],
-          explanation: `Attacker gains initial entry on ${entryHostId} via ${entryVuln}. From there, the attacker pivots through 2 hops to reach high-value target 192.168.1.40, resulting in network-wide compromise.`,
+          explanation: `Attacker gains initial entry on ${entryHostId} via ${entryVuln}. Pivots through 2 hops to reach high-value target 192.168.1.40.`,
         });
       } else {
         setLocalSimulation({
@@ -134,10 +137,10 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
           targetHost: targetIp,
           totalHops: 0,
           pathRiskScore: Math.round(100 - realScore),
-          pathSeverity: realScore < 40 ? "CRITICAL" : realScore < 60 ? "HIGH" : "MEDIUM",
+          pathSeverity: realScore < 40 ? "CRITICAL" : realScore < 60 ? "HIGH" : "LOW",
           reachableHosts: [targetIp],
           pathHops: [],
-          explanation: `Initial entry point on host ${targetIp} (${realOsStr}) via ${entryVuln}. Single host target topology — no further lateral subnet pivoting edges detected.`,
+          explanation: `Audit target host ${targetIp} (${realOsStr}). ${realPorts.length === 0 ? "0 open TCP ports exposed — host perimeter is fully secure." : `${realPorts.length} open service port(s) detected.`}`,
         });
       }
     }
@@ -178,7 +181,7 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
             const isSelected = selectedNode?.id === node.id;
             const isReachable = activeReachableIps.includes(node.ip);
             const isEntry = activeSimulation?.entryHost === node.ip;
-            const nodeColor = severityColors[node.severity] || "#f59e0b";
+            const nodeColor = severityColors[node.severity] || "#22c55e";
 
             return (
               <motion.button
@@ -245,9 +248,14 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
             Discovered Pivot & Lateral Movement Edges ({edges.length})
           </p>
           {edges.length === 0 ? (
-            <div className="p-3.5 rounded-xl text-center" style={{ background: "rgba(10,20,40,0.6)", border: "1px solid rgba(28,50,84,0.6)" }}>
-              <p style={{ fontSize: "11px", color: "#4a6080", fontFamily: "Inter" }}>
-                Single host scan target. Click <strong>"View Demo Subnet Graph"</strong> above to preview multi-host lateral movement topology.
+            <div className="p-3.5 rounded-xl text-center flex flex-col items-center gap-1" style={{ background: "rgba(10,20,40,0.6)", border: "1px solid rgba(28,50,84,0.6)" }}>
+              <p style={{ fontSize: "11px", color: "#8899b8", fontFamily: "Inter" }}>
+                {realPorts.length === 0
+                  ? `Target host ${targetIp} has 0 open ports exposed. Perimeter is fully secured.`
+                  : `Single target scan on ${targetIp}.`}
+              </p>
+              <p style={{ fontSize: "10px", color: "#38bdf8", fontFamily: "Inter" }}>
+                Click <strong>"View Demo Subnet Graph"</strong> above to preview multi-host lateral movement topology.
               </p>
             </div>
           ) : (
@@ -300,11 +308,17 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
             Operating System / Core Banner: {selectedNode.os} · Risk Score: {selectedNode.riskScore}/100 ({selectedNode.severity.toUpperCase()})
           </p>
           <div className="flex gap-2 mt-1">
-            {selectedNode.services.map((s) => (
-              <span key={s} className="px-2 py-0.5 rounded font-mono text-xs" style={{ background: "rgba(28,50,84,0.8)", color: "#38bdf8" }}>
-                {s}
+            {selectedNode.services.length === 0 ? (
+              <span className="px-2 py-0.5 rounded font-mono text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                0 Open Services Detected
               </span>
-            ))}
+            ) : (
+              selectedNode.services.map((s) => (
+                <span key={s} className="px-2 py-0.5 rounded font-mono text-xs" style={{ background: "rgba(28,50,84,0.8)", color: "#38bdf8" }}>
+                  {s}
+                </span>
+              ))
+            )}
           </div>
         </div>
       )}
