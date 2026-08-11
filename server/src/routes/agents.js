@@ -237,7 +237,7 @@ router.put("/:agentId/heartbeat", agentAuth, async (req, res) => {
 });
 
 // GET /api/agents/jobs : Poll pending scan jobs for this agent
-router.get("/jobs", agentAuth, async (req, res) => {
+async function pollPendingJobs(req, res) {
   try {
     const jobs = await scanJobRepository.findPendingByAgent(req.agent.id);
 
@@ -285,7 +285,9 @@ router.get("/jobs", agentAuth, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: "Job polling failed: " + err.message });
   }
-});
+}
+
+router.get("/jobs", agentAuth, pollPendingJobs);
 
 // GET /api/agents/:agentId/jobs : Job polling alias to support local script path
 router.get("/:agentId/jobs", agentAuth, async (req, res) => {
@@ -295,9 +297,7 @@ router.get("/:agentId/jobs", agentAuth, async (req, res) => {
     return res.status(403).json({ error: "Unauthorized for this Agent ID" });
   }
 
-  // Redirect internally to the standard jobs polling controller
-  req.url = "/jobs";
-  return router.handle(req, res);
+  return pollPendingJobs(req, res);
 });
 
 // POST /api/agents/:agentId/jobs/:jobId/result : Upload scan results

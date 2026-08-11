@@ -24,6 +24,18 @@ export function loadConfig() {
       logger.warn("Failed to parse agent config file, using environment defaults.");
     }
   }
+
+  if (process.env.PORT_SENTINEL_URL) {
+    config.serverUrl = process.env.PORT_SENTINEL_URL;
+  }
+  if (process.env.PORT_SENTINEL_API_KEY) {
+    config.apiKey = process.env.PORT_SENTINEL_API_KEY;
+  }
+
+  if (config.serverUrl) {
+    config.serverUrl = config.serverUrl.replace(/\/app.*$/, "").replace(/\/+$/, "");
+  }
+
   return config;
 }
 
