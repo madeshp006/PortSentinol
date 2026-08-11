@@ -86,6 +86,7 @@ model ScanResult {
   cancelRequested   Boolean   @default(false)
   timeline          Json      @default("[]")
   driftEvents       Json      @default("[]")
+  attackGraph       Json      @default("{}")
   requestedAt       DateTime  @default(now())
   startedAt         DateTime?
   finishedAt        DateTime?

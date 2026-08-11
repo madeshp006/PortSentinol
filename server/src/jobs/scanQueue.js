@@ -4,6 +4,7 @@ import { logAudit } from "../services/audit.js";
 import { summarizeScan } from "../services/scanner/findings.js";
 import { runInternalScannerJob } from "../services/scanner/internalScanner.js";
 import { detectDrift } from "../services/scanner/driftDetector.js";
+import { buildSubnetAttackGraph } from "../services/scanner/attackGraphEngine.js";
 import { dispatchDriftAlerts } from "../services/scanner/alertDispatcher.js";
 import { emitToUser } from "../services/socketManager.js";
 
@@ -95,6 +96,9 @@ async function runScan(scanId) {
     const previousScan = await scanRepository.findPreviousScanByTarget(scan.target, scan.userId, scanId);
     const driftEvents = detectDrift({ ...summary, target: scan.target }, previousScan);
 
+    // Build subnet attack path graph if target is a multi-host subnet / CIDR range
+    const attackGraph = buildSubnetAttackGraph({ ...summary, target: scan.target });
+
     await scanRepository.update(scanId, {
       ...summary,
       scanType: displayScanType(rawResult.scanType || scan.scanType),
@@ -107,6 +111,7 @@ async function runScan(scanId) {
       currentStage: "completed",
       errorMessage: "",
       driftEvents,
+      attackGraph,
     });
     await appendTimeline(scanId, `Scan complete. Report saved to history (${driftEvents.length} drift events detected).`, "success");
 

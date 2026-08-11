@@ -10,6 +10,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import * as api from "../utils/api";
 import { getRememberedScanId, hydrateScan, rememberCurrentScan } from "../utils/scanData";
+import { AttackGraphView } from "../components/AttackGraphView";
 
 function getScoreLabel(score: number) {
   if (score >= 80) return { label: "Low Risk", color: "#22c55e" };
@@ -37,6 +38,18 @@ export function ScanResultsScreen() {
   const [loading, setLoading] = useState(!passedScan);
   const [activeTab, setActiveTab] = useState<"external" | "credentialed">("external");
   const [historyData, setHistoryData] = useState<any[]>([]);
+  const [simulationResult, setSimulationResult] = useState<any>(null);
+
+  const handleSimulatePath = (startHostId: string, startVulnerability: string) => {
+    if (!token || !scan?.id) return;
+    api.simulateAttackPath(token, scan.id, startHostId, startVulnerability)
+      .then((res: any) => {
+        if (res && res.simulation) {
+          setSimulationResult(res.simulation);
+        }
+      })
+      .catch((e) => console.log("Attack path simulation error:", e.message));
+  };
 
   useEffect(() => {
     const passedScan = hydrateScan((location.state as any)?.scan);
@@ -318,6 +331,13 @@ export function ScanResultsScreen() {
           </div>
         </div>
       )}
+
+      {/* Subnet Attack Path Graph & Lateral Movement Simulation */}
+      <AttackGraphView
+        graph={scan.attackGraph || { target: scan.target, isSubnetScan: scan.target?.includes("/") || scan.target?.includes(",") }}
+        onSimulatePath={handleSimulatePath}
+        simulationResult={simulationResult}
+      />
 
       {/* STAGE 4: Tabbed Findings Section (External vs Credentialed) */}
       <div className="px-5 mb-4">

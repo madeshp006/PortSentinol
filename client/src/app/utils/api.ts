@@ -206,5 +206,14 @@ export const sendFeedback = (token: string, category: string, text: string) =>
 export const getQueueState = (token: string) =>
   request<any>("/scan/queue-state", {}, token);
 
+export const getScanGraph = (token: string, scanId: string) =>
+  request<any>(`/scans/${scanId}/graph`, {}, token);
+
+export const simulateAttackPath = (token: string, scanId: string, startHostId: string, startVulnerability: string) =>
+  request<any>(`/scans/${scanId}/simulate-path`, {
+    method: "POST",
+    body: JSON.stringify({ startHostId, startVulnerability }),
+  }, token);
+
 
 

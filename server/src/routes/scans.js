@@ -11,6 +11,7 @@ import { enqueueScan, getQueueState } from "../jobs/scanQueue.js";
 import { Parser } from "json2csv";
 import { generatePdfReport } from "../utils/pdfGenerator.js";
 import { sendMail } from "../utils/mailer.js";
+import { buildSubnetAttackGraph, simulateAttackPath } from "../services/scanner/attackGraphEngine.js";
 
 const router = Router();
 
@@ -82,6 +83,72 @@ router.get("/:id/drift", requireUser, async (req, res) => {
       finishedAt: scan.finishedAt,
       totalDriftEvents: driftEvents.length,
       driftEvents,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/scans/:id/graph : Retrieve attack path graph for subnet scan
+router.get("/:id/graph", requireUser, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const scan = await scanRepository.findById(id);
+    if (!scan) {
+      return res.status(404).json({ error: "Scan not found" });
+    }
+    if (req.user.role === "USER" && scan.userId !== req.user.id) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    let graph = scan.attackGraph;
+    if (typeof graph === "string") {
+      graph = JSON.parse(graph);
+    }
+
+    if (!graph || Object.keys(graph).length === 0 || !graph.nodes) {
+      // Generate graph dynamically if not previously stored
+      graph = buildSubnetAttackGraph(scan);
+    }
+
+    return res.json({
+      scanId: scan.id,
+      target: scan.target,
+      ...graph,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/scans/:id/simulate-path : Run Dijkstra attack path simulation from entry node
+router.post("/:id/simulate-path", requireUser, async (req, res) => {
+  const { id } = req.params;
+  const { startHostId, startVulnerability } = req.body || {};
+
+  try {
+    const scan = await scanRepository.findById(id);
+    if (!scan) {
+      return res.status(404).json({ error: "Scan not found" });
+    }
+    if (req.user.role === "USER" && scan.userId !== req.user.id) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    let graph = scan.attackGraph;
+    if (typeof graph === "string") {
+      graph = JSON.parse(graph);
+    }
+
+    if (!graph || Object.keys(graph).length === 0 || !graph.nodes) {
+      graph = buildSubnetAttackGraph(scan);
+    }
+
+    const simulation = simulateAttackPath(graph, startHostId, startVulnerability);
+    return res.json({
+      scanId: scan.id,
+      target: scan.target,
+      simulation,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
