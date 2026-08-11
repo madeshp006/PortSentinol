@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Network, Shield, AlertTriangle, ArrowRight, Play, Info, Server, Cpu, CheckCircle2 } from "lucide-react";
+import { Network, Shield, AlertTriangle, ArrowRight, Play, Info, Server, Cpu, CheckCircle2, Eye } from "lucide-react";
 
 interface Node {
   id: string;
@@ -42,40 +42,60 @@ const severityColors: Record<string, string> = {
   low: "#22c55e",
 };
 
+const DEFAULT_DEMO_NODES: Node[] = [
+  { id: "192.168.1.10", label: "Host 192.168.1.10", ip: "192.168.1.10", os: "OpenSSH 7.2p2", riskScore: 58, severity: "high", services: ["ssh", "http"], findingsCount: 3 },
+  { id: "192.168.1.20", label: "Host 192.168.1.20", ip: "192.168.1.20", os: "vsftpd 2.3.4 Backdoor", riskScore: 18, severity: "critical", services: ["ftp", "smb"], findingsCount: 2 },
+  { id: "192.168.1.30", label: "Host 192.168.1.30", ip: "192.168.1.30", os: "Apache 2.4.7 / RDP", riskScore: 35, severity: "critical", services: ["http", "rdp"], findingsCount: 2 },
+  { id: "192.168.1.40", label: "Host 192.168.1.40", ip: "192.168.1.40", os: "nginx 1.18", riskScore: 92, severity: "low", services: ["https"], findingsCount: 0 },
+];
+
+const DEFAULT_DEMO_EDGES: Edge[] = [
+  { id: "edge-10-20-ftp", source: "192.168.1.10", target: "192.168.1.20", protocol: "ftp", port: 21, weight: 0.90, pivotVulnerability: "Unauthenticated FTP Backdoor Exploit (CVE-2011-2523)", description: "Attacker on 192.168.1.10 can exploit vsftpd backdoor on 192.168.1.20 to gain remote root shell." },
+  { id: "edge-20-30-smb", source: "192.168.1.20", target: "192.168.1.30", protocol: "smb", port: 445, weight: 0.80, pivotVulnerability: "SMB/NetBIOS Share Lateral Movement", description: "Attacker can pivot from 192.168.1.20 to 192.168.1.30 via SMB share enumeration." },
+  { id: "edge-30-40-subnet", source: "192.168.1.30", target: "192.168.1.40", protocol: "tcp", port: 0, weight: 0.20, pivotVulnerability: "Subnet Broadcast Domain Reachability", description: "Both hosts share the same subnet broadcast domain (192.168.1.0/28)." },
+];
+
 export function AttackGraphView({ graph, onSimulatePath, simulationResult }: AttackGraphViewProps) {
-  const nodes = graph?.nodes || [];
-  const edges = graph?.edges || [];
-  const isSubnet = graph?.isSubnetScan ?? nodes.length > 1;
+  const [showDemoGraph, setShowDemoGraph] = useState(false);
+
+  const rawNodes = graph?.nodes || [];
+  const rawEdges = graph?.edges || [];
+  const isSubnet = graph?.isSubnetScan ?? rawNodes.length > 1;
+
+  const nodes = rawNodes.length > 0 ? rawNodes : (showDemoGraph || !isSubnet ? DEFAULT_DEMO_NODES : []);
+  const edges = rawEdges.length > 0 ? rawEdges : (showDemoGraph || !isSubnet ? DEFAULT_DEMO_EDGES : []);
 
   const [selectedNode, setSelectedNode] = useState<Node | null>(nodes[0] || null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
-  const [entryHostId, setEntryHostId] = useState<string>(nodes[0]?.ip || "");
+  const [entryHostId, setEntryHostId] = useState<string>(nodes[0]?.ip || "192.168.1.10");
   const [entryVuln, setEntryVuln] = useState<string>("Weak SSH Credentials");
+  const [localSimulation, setLocalSimulation] = useState<any>(null);
 
-  if (!isSubnet || nodes.length <= 1) {
-    return (
-      <div className="mx-5 mb-4 p-5 rounded-2xl border" style={{ background: "rgba(10,20,40,0.6)", borderColor: "rgba(28,50,84,0.6)" }}>
-        <div className="flex items-center gap-3">
-          <Network size={20} style={{ color: "#38bdf8" }} />
-          <div>
-            <h4 style={{ fontSize: "13px", fontWeight: 700, color: "#e8f0fe", fontFamily: "Inter" }}>
-              Single-Host Target Assessment
-            </h4>
-            <p style={{ fontSize: "11px", color: "#4a6080", fontFamily: "Inter", marginTop: "2px" }}>
-              Attack path reachability modeling is enabled when scanning multi-host subnets (CIDR / IP ranges). Single target scans display findings directly.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const activePathHops: any[] = simulationResult?.pathHops || [];
-  const activeReachableIps: string[] = simulationResult?.reachableHosts || [];
+  const activeSimulation = simulationResult || localSimulation;
+  const activePathHops: any[] = activeSimulation?.pathHops || [];
+  const activeReachableIps: string[] = activeSimulation?.reachableHosts || [];
 
   const handleRunSimulation = () => {
-    if (onSimulatePath && entryHostId) {
+    if (onSimulatePath && rawNodes.length > 0) {
       onSimulatePath(entryHostId, entryVuln);
+    } else {
+      // Local demo simulation
+      const hops = [
+        { hopIndex: 1, fromHost: "192.168.1.10", toHost: "192.168.1.20", protocol: "ftp", port: 21, weight: 0.90, pivotVulnerability: "FTP Backdoor Exploit (CVE-2011-2523)", description: "Attacker on 192.168.1.10 exploits vsftpd backdoor on 192.168.1.20." },
+        { hopIndex: 2, fromHost: "192.168.1.20", toHost: "192.168.1.30", protocol: "smb", port: 445, weight: 0.80, pivotVulnerability: "SMB Share Lateral Movement", description: "Attacker pivots to 192.168.1.30 via SMB share enumeration." },
+      ];
+      setLocalSimulation({
+        success: true,
+        entryHost: entryHostId,
+        entryVulnerability: entryVuln,
+        targetHost: "192.168.1.40",
+        totalHops: 2,
+        pathRiskScore: 68.5,
+        pathSeverity: "HIGH",
+        reachableHosts: ["192.168.1.10", "192.168.1.20", "192.168.1.30", "192.168.1.40"],
+        pathHops: hops,
+        explanation: `Attacker gains entry on ${entryHostId} via ${entryVuln}. Pivots through 2 hops to reach high-value target 192.168.1.40.`,
+      });
     }
   };
 
@@ -92,14 +112,18 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
               Subnet Attack Path Graph & Lateral Pivoting Model
             </h3>
             <p style={{ fontSize: "11px", color: "#38bdf8", fontFamily: "JetBrains Mono, monospace" }}>
-              Target: {graph.target || "Subnet Range"} · {nodes.length} Nodes · {edges.length} Directed Vectors
+              Target: {graph.target || "192.168.1.0/28 Subnet"} · {nodes.length} Host Nodes · {edges.length} Pivot Edges
             </p>
           </div>
         </div>
 
-        <span className="px-2.5 py-1 rounded-lg border font-mono font-bold text-sky-400 border-sky-500/30" style={{ fontSize: "11px", background: "rgba(56,189,248,0.1)" }}>
-          Interactive Topology
-        </span>
+        <button
+          onClick={() => setShowDemoGraph(!showDemoGraph)}
+          className="px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold text-sky-400 border-sky-500/30"
+          style={{ background: "rgba(56,189,248,0.1)", fontFamily: "Inter" }}
+        >
+          <Eye size={13} /> {showDemoGraph ? "Viewing Live Scan" : "Toggle Topology Graph Demo"}
+        </button>
       </div>
 
       {/* Interactive Subnet Graph Canvas Simulation */}
@@ -109,7 +133,7 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
           {nodes.map((node) => {
             const isSelected = selectedNode?.id === node.id;
             const isReachable = activeReachableIps.includes(node.ip);
-            const isEntry = simulationResult?.entryHost === node.ip;
+            const isEntry = activeSimulation?.entryHost === node.ip;
             const nodeColor = severityColors[node.severity] || "#f59e0b";
 
             return (
@@ -297,16 +321,16 @@ export function AttackGraphView({ graph, onSimulatePath, simulationResult }: Att
         </button>
 
         {/* Simulation Output Card */}
-        {simulationResult && simulationResult.success && (
+        {activeSimulation && activeSimulation.success && (
           <div className="p-3.5 rounded-xl flex flex-col gap-2 mt-2" style={{ background: "rgba(10,20,40,0.9)", border: "1px solid rgba(239,68,68,0.4)" }}>
             <div className="flex items-center justify-between">
               <span className="font-bold text-xs text-red-400">
-                Simulation Result: Path Risk Score {simulationResult.pathRiskScore}/100 ({simulationResult.pathSeverity})
+                Simulation Result: Path Risk Score {activeSimulation.pathRiskScore}/100 ({activeSimulation.pathSeverity})
               </span>
-              <span className="text-xs text-slate-400">{simulationResult.totalHops} Lateral Hops</span>
+              <span className="text-xs text-slate-400">{activeSimulation.totalHops} Lateral Hops</span>
             </div>
             <p style={{ fontSize: "11px", color: "#cbd5e1", fontFamily: "Inter", lineHeight: 1.4 }}>
-              {simulationResult.explanation}
+              {activeSimulation.explanation}
             </p>
           </div>
         )}
