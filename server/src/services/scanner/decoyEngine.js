@@ -161,33 +161,19 @@ export async function startDecoyTrap({ type = "ssh", port, targetHost = "0.0.0.0
         });
       };
 
-      // Fallback timer: Log connection probe even if client sends binary SSH handshake
-      const fallbackTimer = setTimeout(() => {
-        logAttempt("ssh_client", "publickey_attempt");
-        try {
-          socket.write(config.rejectMessage);
-          socket.end();
-        } catch (_) {}
-      }, 1500);
-
       socket.on("data", (data) => {
         const text = data.toString("utf8");
         buffer += text;
 
         if (type === "ssh") {
-          // Extract username if present in buffer, e.g., SSH client version or string
           let user = "admin";
           let pass = "********";
 
-          if (buffer.includes("professor") || buffer.includes("root") || buffer.includes("user")) {
-            const match = buffer.match(/(professor[^\s]*|root|admin|user[^\s]*)/i);
-            if (match) user = match[1];
-          } else if (text.trim().length > 0) {
-            user = text.trim().substring(0, 20);
-          }
+          const userMatch = buffer.match(/(professor[^\s]*|root|admin|mades|user[^\s]*|[a-zA-Z0-9_-]{3,15})/i);
+          if (userMatch) user = userMatch[1];
+          else if (text.trim().length > 0) user = text.trim().substring(0, 20);
 
           logAttempt(user, pass);
-          clearTimeout(fallbackTimer);
 
           try {
             socket.write(config.rejectMessage);
@@ -203,25 +189,21 @@ export async function startDecoyTrap({ type = "ssh", port, targetHost = "0.0.0.0
             const userMatch = buffer.match(/USER:([^;]+);/);
             const user = userMatch ? userMatch[1] : "anonymous";
             logAttempt(user, pass);
-            clearTimeout(fallbackTimer);
             socket.write(config.rejectMessage);
             socket.end();
           } else {
             logAttempt("anonymous", "guest");
-            clearTimeout(fallbackTimer);
             socket.write(config.rejectMessage);
             socket.end();
           }
         } else if (type === "http") {
           logAttempt("http_client", "GET /");
-          clearTimeout(fallbackTimer);
           socket.end();
         }
       });
 
       socket.on("error", () => {
-        logAttempt("probe_client", "tcp_syn_probe");
-        clearTimeout(fallbackTimer);
+        // Silently close on socket reset without logging 0-byte noise
       });
     });
 
