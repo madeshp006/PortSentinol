@@ -96,6 +96,11 @@ export function getDecoyProbeLogs() {
   return decoyProbeLogs;
 }
 
+export function clearDecoyProbeLogs() {
+  decoyProbeLogs.length = 0;
+  return { success: true, message: "Decoy probe log feed cleared." };
+}
+
 export async function simulateDecoyProbe(probeData = {}) {
   const type = probeData.type || "ssh";
   const config = DECOY_CONFIGS[type] || DECOY_CONFIGS.ssh;

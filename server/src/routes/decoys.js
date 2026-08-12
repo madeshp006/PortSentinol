@@ -5,6 +5,7 @@ import {
   stopDecoyTrap,
   getActiveDecoyTraps,
   getDecoyProbeLogs,
+  clearDecoyProbeLogs,
   simulateDecoyProbe,
 } from "../services/scanner/decoyEngine.js";
 
@@ -65,6 +66,12 @@ router.post("/simulate-probe", requireUser, (req, res) => {
     message: `Simulated probe alert fired against ${hitEvent.serviceName}`,
     probeEvent: hitEvent,
   });
+});
+
+// POST /api/decoys/clear : Clear probe log feed
+router.post("/clear", requireUser, (req, res) => {
+  const result = clearDecoyProbeLogs();
+  return res.json(result);
 });
 
 export default router;

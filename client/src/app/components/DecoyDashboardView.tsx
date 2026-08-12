@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Radio, AlertTriangle, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Radio, AlertTriangle, RefreshCw, CheckCircle2, Trash2 } from "lucide-react";
 import * as api from "../utils/api";
 
 interface DecoyTrap {
@@ -93,6 +93,16 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
       .catch((e: any) => alert(`Stop Trap Error: ${e.message}`));
   };
 
+  const handleClearLogs = () => {
+    if (!token) return;
+    api.clearDecoyLogs(token)
+      .then(() => {
+        setProbeLogs([]);
+        fetchStatus();
+      })
+      .catch((e: any) => console.log("Clear decoy logs error:", e.message));
+  };
+
   return (
     <div className="mx-5 mb-5 p-5 rounded-2xl flex flex-col gap-4" style={{ background: "linear-gradient(135deg, #0d1f3c, #070d1e)", border: "1px solid rgba(28,50,84,0.8)" }}>
       {/* Header */}
@@ -111,13 +121,23 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
           </div>
         </div>
 
-        <button
-          onClick={fetchStatus}
-          className="p-2 rounded-xl flex items-center gap-1 text-xs font-semibold text-sky-400"
-          style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(28,50,84,0.8)" }}
-        >
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh Feed
-        </button>
+        <div className="flex items-center gap-2">
+          {probeLogs.length > 0 && (
+            <button
+              onClick={handleClearLogs}
+              className="px-2.5 py-1.5 rounded-xl flex items-center gap-1 text-xs font-semibold text-red-400 hover:bg-red-500/10 border border-red-500/30"
+            >
+              <Trash2 size={13} /> Clear Feed
+            </button>
+          )}
+          <button
+            onClick={fetchStatus}
+            className="p-2 rounded-xl flex items-center gap-1 text-xs font-semibold text-sky-400"
+            style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(28,50,84,0.8)" }}
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+          </button>
+        </div>
       </div>
 
       {statusError && (

@@ -239,5 +239,10 @@ export const simulateDecoyProbe = (token: string, payload: { type: string; port:
     body: JSON.stringify(payload),
   }, token);
 
+export const clearDecoyLogs = (token: string) =>
+  request<any>("/decoys/clear", {
+    method: "POST",
+  }, token);
+
 
 
