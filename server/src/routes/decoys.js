@@ -56,8 +56,8 @@ router.post("/stop", requireUser, async (req, res) => {
   }
 });
 
-// POST /api/decoys/simulate-probe : Trigger a simulated probe for live demo presentations
-router.post("/simulate-probe", requireUser, (req, res) => {
+// POST /api/decoys/simulate-probe : Trigger a simulated probe for live demo presentations (Publicly testable)
+router.post("/simulate-probe", (req, res) => {
   const { type, port, sourceIp, attemptedUser, attemptedPass } = req.body || {};
   const hitEvent = simulateDecoyProbe({ type, port, sourceIp, attemptedUser, attemptedPass });
 
