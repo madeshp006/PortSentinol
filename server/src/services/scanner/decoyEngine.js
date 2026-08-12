@@ -4,17 +4,12 @@ import { dispatchDecoyProbeAlert } from "./alertDispatcher.js";
 
 /**
  * Deception-Based Detection Engine (Decoy Traps & Honeypots) for PortSentinel.
- * Spins up lightweight, isolated TCP fake listening services (Fake SSH, Fake FTP, Fake HTTP).
- * Traps unauthorized network probes, logs attempted credentials, and fires alerts.
- * 100% isolated: zero shell or command execution logic.
+ * 100% Real-Time Probe Logging: ONLY logs when explicit attack credentials/payloads are received.
  */
 
 const activeTraps = new Map();
 const decoyProbeLogs = [];
 
-/**
- * Banners and responses for fake decoy services
- */
 const DECOY_CONFIGS = {
   ssh: {
     type: "ssh",
@@ -139,71 +134,98 @@ export async function startDecoyTrap({ type = "ssh", port, targetHost = "0.0.0.0
       const sourceIp = socket.remoteAddress?.replace(/^.*:/, "") || "127.0.0.1";
       const sourcePort = socket.remotePort || 0;
 
-      let buffer = "";
+      let sshState = "banner_sent";
+      let capturedUser = "";
+      let capturedPass = "";
       let hasLogged = false;
 
       // Send initial decoy banner immediately
       socket.write(config.banner);
 
-      const logAttempt = (user = "admin", pass = "********") => {
-        if (hasLogged) return;
-        hasLogged = true;
-
-        recordProbeHit({
-          sourceIp,
-          sourcePort,
-          targetPort: listenPort,
-          decoyType: type,
-          serviceName: config.serviceName,
-          attemptedUser: user,
-          attemptedPass: pass,
-          rawPayload: buffer.substring(0, 100),
-        });
-      };
-
       socket.on("data", (data) => {
         const text = data.toString("utf8");
-        buffer += text;
 
         if (type === "ssh") {
-          let user = "admin";
-          let pass = "********";
+          // Ignore standard OpenSSH client header packet (e.g., SSH-2.0-OpenSSH...)
+          if (text.startsWith("SSH-2.0") || text.startsWith("SSH-1.")) {
+            sshState = "user_prompted";
+            socket.write(config.prompt);
+            return;
+          }
 
-          const userMatch = buffer.match(/(professor[^\s]*|root|admin|mades|user[^\s]*|[a-zA-Z0-9_-]{3,15})/i);
-          if (userMatch) user = userMatch[1];
-          else if (text.trim().length > 0) user = text.trim().substring(0, 20);
+          // Next packet contains username or credentials payload
+          if (!capturedUser) {
+            capturedUser = text.trim();
+            socket.write(`Password for ${capturedUser}: `);
+            return;
+          }
 
-          logAttempt(user, pass);
+          if (!capturedPass && !hasLogged) {
+            capturedPass = text.trim() || "********";
+            hasLogged = true;
 
-          try {
-            socket.write(config.rejectMessage);
-            socket.end();
-          } catch (_) {}
+            recordProbeHit({
+              sourceIp,
+              sourcePort,
+              targetPort: listenPort,
+              decoyType: "ssh",
+              serviceName: config.serviceName,
+              attemptedUser: capturedUser,
+              attemptedPass: capturedPass,
+              rawPayload: `${capturedUser}:${capturedPass}`,
+            });
+
+            try {
+              socket.write(config.rejectMessage);
+              socket.end();
+            } catch (_) {}
+          }
         } else if (type === "ftp") {
           if (text.toUpperCase().startsWith("USER ")) {
-            const user = text.substring(5).trim();
+            capturedUser = text.substring(5).trim();
             socket.write(config.userResponse);
-            buffer = `USER:${user};`;
           } else if (text.toUpperCase().startsWith("PASS ")) {
-            const pass = text.substring(5).trim();
-            const userMatch = buffer.match(/USER:([^;]+);/);
-            const user = userMatch ? userMatch[1] : "anonymous";
-            logAttempt(user, pass);
-            socket.write(config.rejectMessage);
-            socket.end();
-          } else {
-            logAttempt("anonymous", "guest");
+            capturedPass = text.substring(5).trim();
+            if (!hasLogged) {
+              hasLogged = true;
+              recordProbeHit({
+                sourceIp,
+                sourcePort,
+                targetPort: listenPort,
+                decoyType: "ftp",
+                serviceName: config.serviceName,
+                attemptedUser: capturedUser || "anonymous",
+                attemptedPass: capturedPass || "********",
+                rawPayload: text,
+              });
+            }
             socket.write(config.rejectMessage);
             socket.end();
           }
         } else if (type === "http") {
-          logAttempt("http_client", "GET /");
-          socket.end();
+          if (text.toUpperCase().startsWith("GET") || text.toUpperCase().startsWith("POST")) {
+            if (!hasLogged) {
+              hasLogged = true;
+              const path = text.split(" ")[1] || "/";
+              recordProbeHit({
+                sourceIp,
+                sourcePort,
+                targetPort: listenPort,
+                decoyType: "http",
+                serviceName: config.serviceName,
+                attemptedUser: "http_client",
+                attemptedPass: path,
+                rawPayload: text.substring(0, 80),
+              });
+            }
+            socket.write(config.banner);
+            socket.end();
+          }
         }
       });
 
       socket.on("error", () => {
-        // Silently close on socket reset without logging 0-byte noise
+        // Silently ignore socket drops
       });
     });
 
