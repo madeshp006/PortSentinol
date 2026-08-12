@@ -73,6 +73,10 @@ app.get("/", (_req, res) => {
   res.send("PortSentinel backend is running");
 });
 
+app.get("/api", (_req, res) => {
+  res.json({ ok: true, service: "PortSentinel API", status: "running" });
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "PortSentinel API" });
 });

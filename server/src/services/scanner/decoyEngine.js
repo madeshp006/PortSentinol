@@ -40,29 +40,22 @@ const DECOY_CONFIGS = {
   },
 };
 
-/**
- * Callbacks for probe alerts (attached in Stage 2)
- */
 let onProbeDetectedCallback = dispatchDecoyProbeAlert;
 
 export function registerProbeAlertHandler(handlerFn) {
   onProbeDetectedCallback = handlerFn;
 }
 
-/**
- * Records a probe event and triggers alert callback
- */
-
 function recordProbeHit(probeData) {
   const hitEvent = {
     id: `probe-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
     timestamp: new Date().toISOString(),
-    sourceIp: probeData.sourceIp || "192.168.1.100",
+    sourceIp: probeData.sourceIp || "127.0.0.1",
     sourcePort: probeData.sourcePort || 54321,
     targetPort: probeData.targetPort,
     decoyType: probeData.decoyType,
     serviceName: probeData.serviceName,
-    attemptedUser: probeData.attemptedUser || "anonymous",
+    attemptedUser: probeData.attemptedUser || "admin",
     attemptedPass: probeData.attemptedPass || "********",
     rawPayload: probeData.rawPayload || "",
     severity: "HIGH",
@@ -91,6 +84,35 @@ function recordProbeHit(probeData) {
   return hitEvent;
 }
 
+export function getActiveDecoyTraps() {
+  const list = [];
+  for (const [trapId, item] of activeTraps.entries()) {
+    list.push({ trapId, ...item.info });
+  }
+  return list;
+}
+
+export function getDecoyProbeLogs() {
+  return decoyProbeLogs;
+}
+
+export async function simulateDecoyProbe(probeData = {}) {
+  const type = probeData.type || "ssh";
+  const config = DECOY_CONFIGS[type] || DECOY_CONFIGS.ssh;
+  const targetPort = Number(probeData.port || config.defaultPort);
+
+  return recordProbeHit({
+    sourceIp: probeData.sourceIp || "192.168.1.105",
+    sourcePort: probeData.sourcePort || Math.floor(Math.random() * 10000) + 50000,
+    targetPort,
+    decoyType: type,
+    serviceName: config.serviceName,
+    attemptedUser: probeData.attemptedUser || (type === "ssh" ? "root" : type === "ftp" ? "anonymous" : "admin"),
+    attemptedPass: probeData.attemptedPass || (type === "ssh" ? "toor" : type === "ftp" ? "guest@local" : "admin123"),
+    rawPayload: "Simulated Probe Hit",
+  });
+}
+
 /**
  * Starts a fake decoy trap listener
  */
@@ -113,83 +135,97 @@ export async function startDecoyTrap({ type = "ssh", port, targetHost = "0.0.0.0
       const sourcePort = socket.remotePort || 0;
 
       let buffer = "";
-      let attemptedUser = "";
-      let attemptedPass = "";
+      let hasLogged = false;
 
       // Send initial decoy banner immediately
       socket.write(config.banner);
+
+      const logAttempt = (user = "admin", pass = "********") => {
+        if (hasLogged) return;
+        hasLogged = true;
+
+        recordProbeHit({
+          sourceIp,
+          sourcePort,
+          targetPort: listenPort,
+          decoyType: type,
+          serviceName: config.serviceName,
+          attemptedUser: user,
+          attemptedPass: pass,
+          rawPayload: buffer.substring(0, 100),
+        });
+      };
+
+      // Fallback timer: Log connection probe even if client sends binary SSH handshake
+      const fallbackTimer = setTimeout(() => {
+        logAttempt("ssh_client", "publickey_attempt");
+        try {
+          socket.write(config.rejectMessage);
+          socket.end();
+        } catch (_) {}
+      }, 1500);
 
       socket.on("data", (data) => {
         const text = data.toString("utf8");
         buffer += text;
 
         if (type === "ssh") {
-          // Parse fake SSH username / password strings from buffer
-          const lines = buffer.split(/[\r\n]+/);
-          if (lines.length > 0 && lines[0] && !attemptedUser) {
-            attemptedUser = lines[0].trim();
-            socket.write(`Password for ${attemptedUser}: `);
-          } else if (lines.length > 1 && !attemptedPass) {
-            attemptedPass = lines[1].trim();
-            socket.write(config.rejectMessage);
+          // Extract username if present in buffer, e.g., SSH client version or string
+          let user = "admin";
+          let pass = "********";
 
-            recordProbeHit({
-              sourceIp,
-              sourcePort,
-              targetPort: listenPort,
-              decoyType: type,
-              serviceName: config.serviceName,
-              attemptedUser: attemptedUser || "admin",
-              attemptedPass: attemptedPass || "admin123",
-              rawPayload: buffer.substring(0, 100),
-            });
-
-            socket.end();
+          if (buffer.includes("professor") || buffer.includes("root") || buffer.includes("user")) {
+            const match = buffer.match(/(professor[^\s]*|root|admin|user[^\s]*)/i);
+            if (match) user = match[1];
+          } else if (text.trim().length > 0) {
+            user = text.trim().substring(0, 20);
           }
+
+          logAttempt(user, pass);
+          clearTimeout(fallbackTimer);
+
+          try {
+            socket.write(config.rejectMessage);
+            socket.end();
+          } catch (_) {}
         } else if (type === "ftp") {
           if (text.toUpperCase().startsWith("USER ")) {
-            attemptedUser = text.substring(5).trim();
+            const user = text.substring(5).trim();
             socket.write(config.userResponse);
+            buffer = `USER:${user};`;
           } else if (text.toUpperCase().startsWith("PASS ")) {
-            attemptedPass = text.substring(5).trim();
+            const pass = text.substring(5).trim();
+            const userMatch = buffer.match(/USER:([^;]+);/);
+            const user = userMatch ? userMatch[1] : "anonymous";
+            logAttempt(user, pass);
+            clearTimeout(fallbackTimer);
             socket.write(config.rejectMessage);
-
-            recordProbeHit({
-              sourceIp,
-              sourcePort,
-              targetPort: listenPort,
-              decoyType: type,
-              serviceName: config.serviceName,
-              attemptedUser: attemptedUser || "anonymous",
-              attemptedPass: attemptedPass || "guest",
-              rawPayload: buffer.substring(0, 100),
-            });
-
+            socket.end();
+          } else {
+            logAttempt("anonymous", "guest");
+            clearTimeout(fallbackTimer);
+            socket.write(config.rejectMessage);
             socket.end();
           }
-        } else {
-          // HTTP Decoy
-          recordProbeHit({
-            sourceIp,
-            sourcePort,
-            targetPort: listenPort,
-            decoyType: type,
-            serviceName: config.serviceName,
-            attemptedUser: "http-probe",
-            attemptedPass: "N/A",
-            rawPayload: buffer.substring(0, 100),
-          });
+        } else if (type === "http") {
+          logAttempt("http_client", "GET /");
+          clearTimeout(fallbackTimer);
           socket.end();
         }
       });
 
       socket.on("error", () => {
-        socket.destroy();
+        logAttempt("probe_client", "tcp_syn_probe");
+        clearTimeout(fallbackTimer);
       });
     });
 
     server.on("error", (err) => {
-      reject(new Error(`Failed to start ${config.serviceName} on port ${listenPort}: ${err.message}`));
+      if (err.code === "EADDRINUSE") {
+        reject(new Error(`Port ${listenPort} is already in use by another application on your host system.`));
+      } else {
+        reject(err);
+      }
     });
 
     server.listen(listenPort, targetHost, () => {
@@ -198,63 +234,26 @@ export async function startDecoyTrap({ type = "ssh", port, targetHost = "0.0.0.0
         type,
         port: listenPort,
         serviceName: config.serviceName,
-        targetHost,
         startedAt: new Date().toISOString(),
         status: "ACTIVE",
       };
 
       activeTraps.set(trapId, { server, info: trapInfo });
-      console.log(`[DECOY ENGINE] Started ${config.serviceName} listening on port ${listenPort}`);
-      resolve({ success: true, message: `Deployed ${config.serviceName} listening on port ${listenPort}`, trap: trapInfo });
+      resolve({ success: true, message: `Decoy trap listening on ${targetHost}:${listenPort}`, trap: trapInfo });
     });
   });
 }
 
-/**
- * Stops an active decoy trap
- */
 export async function stopDecoyTrap(trapId) {
   if (!activeTraps.has(trapId)) {
-    return { success: false, message: `Decoy trap ${trapId} is not active.` };
+    return { success: false, message: `Trap ${trapId} is not active.` };
   }
 
   const { server, info } = activeTraps.get(trapId);
   return new Promise((resolve) => {
     server.close(() => {
       activeTraps.delete(trapId);
-      console.log(`[DECOY ENGINE] Stopped decoy trap ${trapId}`);
-      resolve({ success: true, message: `Stopped decoy trap ${info.serviceName} on port ${info.port}` });
+      resolve({ success: true, message: `Decoy trap ${info.serviceName} stopped.`, trapId });
     });
-  });
-}
-
-/**
- * Returns list of active decoy traps
- */
-export function getActiveDecoyTraps() {
-  return Array.from(activeTraps.values()).map((t) => t.info);
-}
-
-/**
- * Returns decoy probe logs
- */
-export function getDecoyProbeLogs() {
-  return [...decoyProbeLogs];
-}
-
-/**
- * Simulates a probe hit for live presentation demos
- */
-export function simulateDecoyProbe({ type = "ssh", port = 2222, sourceIp = "192.168.1.105", attemptedUser = "root", attemptedPass = "toor" }) {
-  const config = DECOY_CONFIGS[type] || DECOY_CONFIGS.ssh;
-  return recordProbeHit({
-    sourceIp,
-    sourcePort: Math.floor(Math.random() * 20000) + 40000,
-    targetPort: Number(port),
-    decoyType: type,
-    serviceName: config.serviceName,
-    attemptedUser,
-    attemptedPass,
-    rawPayload: `Simulated probe test on ${type} port ${port}`,
   });
 }

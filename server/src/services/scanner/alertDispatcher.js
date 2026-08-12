@@ -137,13 +137,15 @@ export async function dispatchDecoyProbeAlert(hitEvent = {}) {
   const message = `Unauthorized probing attempt trapped on ${hitEvent.serviceName}. Attempted user: "${hitEvent.attemptedUser}".`;
 
   try {
-    await alertRepository.create({
-      userId: "system",
-      title,
-      message,
-      risk: "critical",
-      metadata: hitEvent,
-    });
+    if (hitEvent.userId && hitEvent.userId !== "system") {
+      await alertRepository.create({
+        userId: hitEvent.userId,
+        title,
+        message,
+        risk: "critical",
+        metadata: hitEvent,
+      });
+    }
   } catch (e) {
     console.warn("[alertDispatcher] Decoy alert DB create error:", e.message);
   }

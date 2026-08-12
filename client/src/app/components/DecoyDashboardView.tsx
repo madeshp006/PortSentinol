@@ -38,26 +38,31 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
   const [showConsentModal, setShowConsentModal] = useState(false);
   const [selectedType, setSelectedType] = useState<"ssh" | "ftp" | "http">("ssh");
   const [selectedPort, setSelectedPort] = useState<number>(2222);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const fetchStatus = () => {
     if (!token) return;
     setLoading(true);
     api.getDecoyStatus(token)
       .then((data: any) => {
+        setStatusError(null);
         if (data && Array.isArray(data.activeTraps)) {
           setActiveTraps(data.activeTraps);
-          if (Array.isArray(data.probeLogs) && data.probeLogs.length > 0) {
-            setProbeLogs(data.probeLogs);
-          }
+        }
+        if (data && Array.isArray(data.probeLogs) && data.probeLogs.length > 0) {
+          setProbeLogs(data.probeLogs);
         }
       })
-      .catch((e: any) => console.log("Fetch decoy status error:", e.message))
+      .catch((e: any) => {
+        console.log("Fetch decoy status error:", e.message);
+        setStatusError(e.message);
+      })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
+    const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -68,7 +73,7 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
     }
 
     const serviceName = selectedType === "ssh" ? "Fake SSH Trap (OpenSSH 7.2p2)" : selectedType === "ftp" ? "Fake FTP Trap (vsFTPd 2.3.4)" : "Fake HTTP Trap (Apache 2.4.7)";
-    const newTrap: DecoyTrap = {
+    const fallbackTrap: DecoyTrap = {
       trapId: `trap-${selectedType}-${selectedPort}`,
       type: selectedType,
       port: selectedPort,
@@ -77,16 +82,24 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
       status: "ACTIVE",
     };
 
-    // Immediate UI feedback
-    setActiveTraps((prev) => {
-      if (prev.some((t) => t.trapId === newTrap.trapId)) return prev;
-      return [newTrap, ...prev];
-    });
-
     if (token) {
+      setLoading(true);
       api.startDecoy(token, { type: selectedType, port: selectedPort, userConsent: true })
-        .then(() => fetchStatus())
-        .catch((e: any) => console.log("Start trap error:", e.message));
+        .then((res: any) => {
+          if (res && res.error) {
+            alert(`Failed to start trap: ${res.error}`);
+          } else {
+            setActiveTraps((prev) => {
+              if (prev.some((t) => t.trapId === fallbackTrap.trapId)) return prev;
+              return [fallbackTrap, ...prev];
+            });
+            fetchStatus();
+          }
+        })
+        .catch((e: any) => alert(`Trap Start Error: ${e.message}`))
+        .finally(() => setLoading(false));
+    } else {
+      setActiveTraps((prev) => [fallbackTrap, ...prev]);
     }
   };
 
@@ -115,7 +128,6 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
       status: "DETECTED",
     };
 
-    // Instant local UI state update
     setProbeLogs((prev) => [mockHit, ...prev]);
 
     if (token) {
@@ -155,6 +167,13 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
+
+      {statusError && (
+        <div className="p-3 rounded-xl flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+          <AlertTriangle size={14} />
+          <span>Backend Connection Note: {statusError}</span>
+        </div>
+      )}
 
       {/* Trap Deployment Controls */}
       <div className="p-4 rounded-2xl flex flex-col gap-3" style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(28,50,84,0.7)" }}>
