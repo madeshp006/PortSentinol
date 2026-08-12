@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Shield, Radio, AlertTriangle, Play, RefreshCw, CheckCircle2, Lock, Terminal, Cpu } from "lucide-react";
+import { Radio, AlertTriangle, RefreshCw, CheckCircle2 } from "lucide-react";
 import * as api from "../utils/api";
 
 interface DecoyTrap {
@@ -49,7 +49,7 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
         if (data && Array.isArray(data.activeTraps)) {
           setActiveTraps(data.activeTraps);
         }
-        if (data && Array.isArray(data.probeLogs) && data.probeLogs.length > 0) {
+        if (data && Array.isArray(data.probeLogs)) {
           setProbeLogs(data.probeLogs);
         }
       })
@@ -62,7 +62,7 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
+    const interval = setInterval(fetchStatus, 2000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -72,73 +72,25 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
       return;
     }
 
-    const serviceName = selectedType === "ssh" ? "Fake SSH Trap (OpenSSH 7.2p2)" : selectedType === "ftp" ? "Fake FTP Trap (vsFTPd 2.3.4)" : "Fake HTTP Trap (Apache 2.4.7)";
-    const fallbackTrap: DecoyTrap = {
-      trapId: `trap-${selectedType}-${selectedPort}`,
-      type: selectedType,
-      port: selectedPort,
-      serviceName,
-      startedAt: new Date().toISOString(),
-      status: "ACTIVE",
-    };
-
-    if (token) {
-      setLoading(true);
-      api.startDecoy(token, { type: selectedType, port: selectedPort, userConsent: true })
-        .then((res: any) => {
-          if (res && res.error) {
-            alert(`Failed to start trap: ${res.error}`);
-          } else {
-            setActiveTraps((prev) => {
-              if (prev.some((t) => t.trapId === fallbackTrap.trapId)) return prev;
-              return [fallbackTrap, ...prev];
-            });
-            fetchStatus();
-          }
-        })
-        .catch((e: any) => alert(`Trap Start Error: ${e.message}`))
-        .finally(() => setLoading(false));
-    } else {
-      setActiveTraps((prev) => [fallbackTrap, ...prev]);
-    }
+    if (!token) return;
+    setLoading(true);
+    api.startDecoy(token, { type: selectedType, port: selectedPort, userConsent: true })
+      .then((res: any) => {
+        if (res && res.error) {
+          alert(`Failed to start trap: ${res.error}`);
+        } else {
+          fetchStatus();
+        }
+      })
+      .catch((e: any) => alert(`Trap Start Error: ${e.message}`))
+      .finally(() => setLoading(false));
   };
 
   const handleStopTrap = (trapId: string) => {
-    setActiveTraps((prev) => prev.filter((t) => t.trapId !== trapId));
-    if (token) {
-      api.stopDecoy(token, trapId)
-        .then(() => fetchStatus())
-        .catch((e: any) => console.log("Stop trap error:", e.message));
-    }
-  };
-
-  const handleSimulateProbe = () => {
-    const serviceName = selectedType === "ssh" ? "Fake SSH Trap (OpenSSH 7.2p2)" : selectedType === "ftp" ? "Fake FTP Trap (vsFTPd 2.3.4)" : "Fake HTTP Trap (Apache 2.4.7)";
-    const mockHit: ProbeLog = {
-      id: `probe-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      timestamp: new Date().toISOString(),
-      sourceIp: "192.168.1.105",
-      sourcePort: Math.floor(Math.random() * 10000) + 50000,
-      targetPort: selectedPort,
-      decoyType: selectedType,
-      serviceName,
-      attemptedUser: selectedType === "ssh" ? "root" : selectedType === "ftp" ? "anonymous" : "admin",
-      attemptedPass: selectedType === "ssh" ? "toor" : selectedType === "ftp" ? "guest@local" : "admin123",
-      severity: "HIGH",
-      status: "DETECTED",
-    };
-
-    setProbeLogs((prev) => [mockHit, ...prev]);
-
-    if (token) {
-      api.simulateDecoyProbe(token, {
-        type: selectedType,
-        port: selectedPort,
-        sourceIp: "192.168.1.105",
-        attemptedUser: mockHit.attemptedUser,
-        attemptedPass: mockHit.attemptedPass,
-      }).catch((e: any) => console.log("Simulate probe API error:", e.message));
-    }
+    if (!token) return;
+    api.stopDecoy(token, trapId)
+      .then(() => fetchStatus())
+      .catch((e: any) => alert(`Stop Trap Error: ${e.message}`));
   };
 
   return (
@@ -154,24 +106,24 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
               Deception & Honeypot Trap Engine
             </h3>
             <p style={{ fontSize: "11px", color: "#8899b8", fontFamily: "Inter" }}>
-              Deploy fake listening services to catch & log unauthorized network probes
+              Deploy fake listening services to catch & log real-time network probes
             </p>
           </div>
         </div>
 
         <button
           onClick={fetchStatus}
-          className="p-2 rounded-xl"
-          style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(28,50,84,0.8)", color: "#38bdf8" }}
+          className="p-2 rounded-xl flex items-center gap-1 text-xs font-semibold text-sky-400"
+          style={{ background: "rgba(10,20,40,0.8)", border: "1px solid rgba(28,50,84,0.8)" }}
         >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh Feed
         </button>
       </div>
 
       {statusError && (
         <div className="p-3 rounded-xl flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
           <AlertTriangle size={14} />
-          <span>Backend Connection Note: {statusError}</span>
+          <span>Backend Connection Status: {statusError}</span>
         </div>
       )}
 
@@ -214,24 +166,16 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
             />
           </div>
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-end">
             <button
               onClick={() => {
                 if (!userConsent) setShowConsentModal(true);
                 else handleStartTrap();
               }}
-              className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-semibold text-xs text-white"
+              className="w-full py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-semibold text-xs text-white"
               style={{ background: "linear-gradient(135deg, #0e6bb0, #0a4f8a)", fontFamily: "Inter" }}
             >
               <Radio size={14} /> Start Trap
-            </button>
-            <button
-              onClick={handleSimulateProbe}
-              className="px-3 py-2.5 rounded-xl flex items-center justify-center gap-1 font-semibold text-xs text-amber-400 border border-amber-500/30"
-              style={{ background: "rgba(245,158,11,0.1)", fontFamily: "Inter" }}
-              title="Simulate Probe for Viva Demo"
-            >
-              <Play size={13} /> Demo Probe
             </button>
           </div>
         </div>
@@ -246,7 +190,7 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
         {activeTraps.length === 0 ? (
           <div className="p-4 rounded-xl text-center" style={{ background: "rgba(10,20,40,0.5)", border: "1px solid rgba(28,50,84,0.6)" }}>
             <p style={{ fontSize: "11px", color: "#4a6080", fontFamily: "Inter" }}>
-              No active decoy traps listening. Select service above to spin up a trap.
+              No active decoy traps listening on server. Select service above and click "Start Trap".
             </p>
           </div>
         ) : (
@@ -285,7 +229,7 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
           </p>
           {probeLogs.length > 0 && (
             <span className="px-2 py-0.5 rounded text-xs font-mono font-bold text-red-400 bg-red-500/10 border border-red-500/30">
-              🚨 {probeLogs.length} PROBES TRAPPED
+              🚨 {probeLogs.length} REAL PROBES TRAPPED
             </span>
           )}
         </div>
@@ -297,7 +241,7 @@ export function DecoyDashboardView({ token }: DecoyDashboardViewProps) {
               No Probing Detected — Network Segment Clear
             </span>
             <p style={{ fontSize: "11px", color: "#4a6080", fontFamily: "Inter" }}>
-              Decoy traps present realistic banners to attract attackers. Any connection attempt will be logged instantly.
+              Decoy trap is listening. Any real connection attempt to port {selectedPort} will appear here in real time.
             </p>
           </div>
         ) : (
