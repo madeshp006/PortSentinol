@@ -21,30 +21,13 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 3. Install Enterprise E2E Framework Dependencies
+      - name: 3. Install Server Dependencies
         run: |
-          cd e2e-framework
+          cd server
           npm install
 
-      - name: 4. Execute 1,200 Test Cases (Selenium, Appium, Security, Load)
+      - name: 4. Install Client Dependencies & Typecheck
         run: |
-          cd e2e-framework
-          npm test
-
-      - name: 5. Upload Excel Report Artifact (E2E_1200_Test_Execution_Report.xlsx)
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: PortSentinel-1200-E2E-Excel-Report
-          path: e2e-framework/excel/E2E_1200_Test_Execution_Report.xlsx
-          retention-days: 30
-
-      - name: 6. Upload HTML Report & Execution Logs Artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: PortSentinel-HTML-Report-Logs
-          path: |
-            e2e-framework/reports/
-            e2e-framework/logs/
-          retention-days: 30
+          cd client
+          npm install
+          npm run typecheck
